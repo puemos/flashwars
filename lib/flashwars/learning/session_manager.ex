@@ -5,29 +5,35 @@ defmodule Flashwars.Learning.SessionManager do
 
   @recent_window :timer.hours(24)
 
-  def save_session(user_id, study_set_id, mode, state) do
+  def save_session(user, study_set_id, mode, state) do
     now = DateTime.utc_now()
 
     Learning.Session
-    |> Ash.Changeset.for_create(:upsert, %{
-      user_id: user_id,
-      study_set_id: study_set_id,
-      mode: mode,
-      state: state,
-      last_saved_at: now
-    })
-    |> Ash.create()
+    |> Ash.Changeset.for_create(
+      :upsert,
+      %{
+        study_set_id: study_set_id,
+        mode: mode,
+        state: state,
+        last_saved_at: now
+      },
+      actor: user
+    )
+    |> Ash.create(actor: user)
   end
 
-  def resume_session(user_id, study_set_id, mode) do
+  def resume_session(user, study_set_id, mode) do
     with {:ok, session} <-
            Learning.Session
-           |> Ash.Query.for_read(:for_user_set_mode, %{
-             user_id: user_id,
-             study_set_id: study_set_id,
-             mode: mode
-           })
-           |> Ash.read(limit: 1),
+           |> Ash.Query.for_read(
+             :for_user_set_mode,
+             %{
+               study_set_id: study_set_id,
+               mode: mode
+             },
+             actor: user
+           )
+           |> Ash.read(limit: 1, actor: user),
          [session] <- session do
       if recent?(session) do
         {:ok, session.state}

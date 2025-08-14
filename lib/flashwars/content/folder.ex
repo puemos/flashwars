@@ -11,31 +11,40 @@ defmodule Flashwars.Content.Folder do
   end
 
   actions do
-    defaults [:read, :create, :update, :destroy]
+    defaults [:read, :update, :destroy]
+
+    create :create do
+      accept [:name, :owner_id, :organization_id]
+    end
   end
 
   policies do
-    policy always() do
-      forbid_if always()
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
+    # 2. Org admin can do everything under their org
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # 3. Owners can do everything
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if relates_to_actor_via(:owner)
     end
 
+    # 4. Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
-    end
-
-    policy always() do
-      authorize_if actor_attribute_equals(:site_admin, true)
     end
   end
 
   attributes do
     uuid_primary_key :id
-    attribute :name, :string, allow_nil?: false
+    attribute :name, :string, allow_nil?: false, public?: true
     attribute :organization_id, :uuid
+    attribute :owner_id, :uuid, public?: true
 
     create_timestamp :inserted_at
     update_timestamp :updated_at

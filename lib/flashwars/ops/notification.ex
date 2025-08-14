@@ -14,7 +14,8 @@ defmodule Flashwars.Ops.Notification do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:type, :data, :read_at, :user_id]
+      accept [:type, :data, :read_at]
+      change relate_actor(:user)
     end
 
     update :mark_read do

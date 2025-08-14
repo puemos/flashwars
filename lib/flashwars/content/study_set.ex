@@ -15,7 +15,7 @@ defmodule Flashwars.Content.StudySet do
     defaults [:read]
 
     create :create do
-      accept [:name, :description, :privacy, :folder_id, :organization_id]
+      accept [:name, :description, :privacy, :folder_id, :organization_id, :owner_id]
       change relate_actor(:owner)
 
       change fn changeset, _ctx ->
@@ -49,39 +49,34 @@ defmodule Flashwars.Content.StudySet do
   end
 
   policies do
-    # Allow creates for anyone (ownership is set by relate_actor/2)
-    policy action_type(:create) do
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # Owner access for updating or deleting
-    policy action_type([:update, :destroy]) do
+    # 2. Org admin can do everything under their org
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # 3. Owners can do everything
+    policy action_type([:read, :create, :update, :destroy]) do
       authorize_if relates_to_actor_via(:owner)
     end
 
-    # Owner access for reads
-    policy action_type(:read) do
-      authorize_if relates_to_actor_via(:owner)
-    end
-
-    # Public read access
-    policy action(:public) do
-      authorize_if always()
-    end
-
-    # Link token access
-    policy action(:with_link_token) do
-      authorize_if always()
-    end
-
-    # Org members can read org-owned sets
+    # 4. Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
 
-    # Site admins can do anything
-    policy always() do
-      authorize_if actor_attribute_equals(:site_admin, true)
+    # 5. Members with link-token can read the resource
+    policy action(:with_link_token) do
+      authorize_if always()
+    end
+
+    # Public read access (if you want to keep public sets readable by anyone)
+    policy action(:public) do
+      authorize_if always()
     end
   end
 
@@ -98,6 +93,7 @@ defmodule Flashwars.Content.StudySet do
     attribute :tags_cache, {:array, :string}, default: []
     attribute :link_token, :string
 
+    attribute :owner_id, :uuid, public?: true
     # Multitenancy (org support). Relationship can be added later
     attribute :organization_id, :uuid
 

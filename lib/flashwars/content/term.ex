@@ -25,22 +25,24 @@ defmodule Flashwars.Content.Term do
   end
 
   policies do
-    policy always() do
-      forbid_if always()
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
-    # Allow owners of the study set to read/write terms
+    # 2. Org admin can do everything under their org
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # 3. Owners can do everything
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if relates_to_actor_via([:study_set, :owner])
     end
 
-    # Org members can read terms via study set organization
+    # 4. Org members can read terms via study set organization
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
-    end
-
-    policy always() do
-      authorize_if actor_attribute_equals(:site_admin, true)
     end
   end
 

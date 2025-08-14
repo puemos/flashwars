@@ -25,12 +25,9 @@ defmodule Flashwars.Content.Tag do
   end
 
   policies do
-    policy action_type(:read) do
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
-    end
-
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if actor_attribute_equals(:site_admin, true)
     end
   end
 

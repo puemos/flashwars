@@ -39,19 +39,29 @@ defmodule Flashwars.Games.GameRoom do
   end
 
   policies do
-    policy always(), do: forbid_if(always())
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
+    end
 
-    # Host controls the game
-    policy action_type([:create, :update]) do
+    # 2. Org admin can do everything under their org (filter check)
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # 3. Host (owner) can do everything
+    policy action_type([:read, :create, :update, :destroy]) do
       authorize_if relates_to_actor_via(:host)
     end
 
-    # Players and org members can read
+    # 4. Org members can read org resources
     policy action_type(:read) do
-      authorize_if relates_to_actor_via(:host)
-      authorize_if {Flashwars.Policies.GameParticipantRead, []}
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
-      authorize_if actor_attribute_equals(:site_admin, true)
+    end
+
+    # 5. Game participants can read (if applicable)
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.GameParticipantRead, []}
     end
   end
 

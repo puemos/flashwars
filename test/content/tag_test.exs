@@ -5,8 +5,8 @@ defmodule Flashwars.Content.TagTest do
   alias Flashwars.Content
   alias Flashwars.Content.Tag
 
-  @admin %{site_admin: true}
-  @user %{site_admin: false}
+  @admin %{id: Ecto.UUID.generate(), site_admin: true}
+  @user %{id: Ecto.UUID.generate(), site_admin: false}
 
   describe "valid inputs" do
     property "accepts all valid input" do

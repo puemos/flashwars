@@ -14,7 +14,8 @@ defmodule Flashwars.Classroom.Enrollment do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:section_id, :user_id, :role]
+      accept [:section_id, :role]
+      change relate_actor(:user)
     end
 
     update :set_role do

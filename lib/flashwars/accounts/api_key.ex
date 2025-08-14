@@ -15,7 +15,8 @@ defmodule Flashwars.Accounts.ApiKey do
 
     create :create do
       primary? true
-      accept [:user_id, :expires_at]
+      accept [:expires_at]
+      change relate_actor(:user)
 
       change {AshAuthentication.Strategy.ApiKey.GenerateApiKey,
               prefix: :flashwars, hash: :api_key_hash}

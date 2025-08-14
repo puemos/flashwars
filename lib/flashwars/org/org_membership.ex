@@ -14,7 +14,8 @@ defmodule Flashwars.Org.OrgMembership do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:role, :organization_id, :user_id]
+      accept [:role, :organization_id]
+      change relate_actor(:user)
     end
 
     update :set_role do

@@ -17,16 +17,16 @@ defmodule Flashwars.Learning.Session do
       upsert? true
       upsert_identity :by_user_set_mode
       upsert_fields [:state, :last_saved_at]
-      accept [:user_id, :study_set_id, :mode, :state, :last_saved_at]
+      accept [:study_set_id, :mode, :state, :last_saved_at]
+      change relate_actor(:user)
     end
 
     read :for_user_set_mode do
-      argument :user_id, :uuid, allow_nil?: false
       argument :study_set_id, :uuid, allow_nil?: false
       argument :mode, :atom, allow_nil?: false
 
       filter expr(
-               user_id == ^arg(:user_id) and study_set_id == ^arg(:study_set_id) and
+               user_id == ^actor(:id) and study_set_id == ^arg(:study_set_id) and
                  mode == ^arg(:mode)
              )
 
@@ -35,17 +35,24 @@ defmodule Flashwars.Learning.Session do
   end
 
   policies do
-    policy always(), do: forbid_if(always())
-
-    policy action_type(:read) do
-      authorize_if relates_to_actor_via(:user)
-      authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
-      authorize_if actor_attribute_equals(:site_admin, true)
+    # 1. Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
-    policy action_type([:create, :destroy]) do
+    # 2. Org admin can do everything under their org
+    policy action_type([:read, :create, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # 3. Owners (user) can do everything
+    policy action_type([:read, :create, :destroy]) do
       authorize_if relates_to_actor_via(:user)
-      authorize_if actor_attribute_equals(:site_admin, true)
+    end
+
+    # 4. Org members can read org resources
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
     end
   end
 
