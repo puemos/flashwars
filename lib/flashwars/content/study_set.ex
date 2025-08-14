@@ -1,0 +1,134 @@
+defmodule Flashwars.Content.StudySet do
+  use Ash.Resource,
+    otp_app: :flashwars,
+    domain: Flashwars.Content,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshArchival.Resource],
+    authorizers: [Ash.Policy.Authorizer]
+
+  postgres do
+    table "study_sets"
+    repo Flashwars.Repo
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create do
+      accept [:name, :description, :privacy, :folder_id, :organization_id]
+      change relate_actor(:owner)
+
+      change fn changeset, _ctx ->
+        privacy = Ash.Changeset.get_attribute(changeset, :privacy)
+
+        if privacy == :link_only do
+          Ash.Changeset.change_attribute(changeset, :link_token, __MODULE__.generate_link_token())
+        else
+          changeset
+        end
+      end
+    end
+
+    update :update do
+      accept [:name, :description, :privacy, :folder_id]
+    end
+
+    destroy :archive do
+      require_atomic? false
+      soft? true
+    end
+
+    read :public do
+      filter expr(privacy == :public)
+    end
+
+    read :with_link_token do
+      argument :token, :string, allow_nil?: false
+      filter expr(privacy == :link_only and link_token == ^arg(:token))
+    end
+  end
+
+  policies do
+    # Default deny
+    policy always() do
+      forbid_if always()
+    end
+
+    # Owner access
+    policy action_type(:read) do
+      authorize_if relates_to_actor_via(:owner)
+    end
+
+    policy action_type([:create, :update, :destroy]) do
+      authorize_if relates_to_actor_via(:owner)
+    end
+
+    # Public content readable by anyone
+    policy action(:public) do
+      authorize_if always()
+    end
+
+    # Link token access
+    policy action(:with_link_token) do
+      authorize_if always()
+    end
+
+    # Organization members can read org-owned sets
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    # Site admins can do anything for moderation
+    policy always() do
+      authorize_if actor_attribute_equals(:site_admin, true)
+    end
+  end
+
+  attributes do
+    uuid_primary_key :id
+
+    attribute :name, :string, allow_nil?: false
+    attribute :description, :string
+
+    attribute :privacy, :atom,
+      constraints: [one_of: [:private, :link_only, :public]],
+      default: :private
+
+    attribute :tags_cache, {:array, :string}, default: []
+    attribute :link_token, :string
+
+    # Multitenancy (org support). Relationship can be added later
+    attribute :organization_id, :uuid
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  relationships do
+    belongs_to :owner, Flashwars.Accounts.User, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
+    belongs_to :folder, Flashwars.Content.Folder
+
+    has_many :terms, Flashwars.Content.Term do
+      sort position: :asc
+    end
+
+    many_to_many :tags, Flashwars.Content.Tag do
+      through Flashwars.Content.SetTag
+      source_attribute_on_join_resource :study_set_id
+      destination_attribute_on_join_resource :tag_id
+    end
+  end
+
+  aggregates do
+    count :terms_count, :terms
+  end
+
+  identities do
+    identity :owner_name, [:owner_id, :name]
+  end
+
+  def generate_link_token do
+    :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
+  end
+end
