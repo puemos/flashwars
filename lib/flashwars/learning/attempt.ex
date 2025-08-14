@@ -14,28 +14,42 @@ defmodule Flashwars.Learning.Attempt do
     defaults [:read, :update, :destroy]
 
     create :create do
-      accept [:mode, :score, :started_at, :completed_at, :study_set_id, :assignment_id]
+      accept [
+        :mode,
+        :score,
+        :started_at,
+        :completed_at,
+        :study_set_id,
+        :assignment_id,
+        :organization_id
+      ]
+
       change relate_actor(:user)
     end
   end
 
   policies do
-    # 1. Site admin can do everything (bypass)
+    # Site admin can do everything (bypass)
     bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # 2. Org admin can do everything under their org (filter check)
+    # Org admin can do everything under their org (filter check)
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
-    # 3. Owners (user) can do everything
-    policy action_type([:read, :create, :update, :destroy]) do
+    # Owners (user) can do everything
+    policy action_type([:read, :update, :destroy]) do
       authorize_if relates_to_actor_via(:user)
     end
 
-    # 4. Org members can read org resources
+    # Anyone can create an attempt
+    policy action_type(:create) do
+      authorize_if always()
+    end
+
+    # Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberViaAssignmentOrSetRead, []}
     end
@@ -51,6 +65,7 @@ defmodule Flashwars.Learning.Attempt do
     attribute :score, :integer, default: 0
     attribute :started_at, :utc_datetime
     attribute :completed_at, :utc_datetime
+    attribute :organization_id, :uuid
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
@@ -60,6 +75,7 @@ defmodule Flashwars.Learning.Attempt do
     belongs_to :user, Flashwars.Accounts.User, allow_nil?: false
     belongs_to :study_set, Flashwars.Content.StudySet, allow_nil?: false
     belongs_to :assignment, Flashwars.Classroom.Assignment
+    belongs_to :organization, Flashwars.Org.Organization
     has_many :items, Flashwars.Learning.AttemptItem
   end
 end

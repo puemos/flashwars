@@ -14,32 +14,44 @@ defmodule Flashwars.Games.GameRound do
     defaults [:read, :update, :destroy]
 
     create :create do
-      accept [:number, :state, :question_data, :started_at, :ended_at, :game_room_id]
+      accept [
+        :number,
+        :state,
+        :question_data,
+        :started_at,
+        :ended_at,
+        :game_room_id,
+        :organization_id
+      ]
     end
   end
 
   policies do
-    # 1. Site admin can do everything (bypass)
+    # Site admin can do everything (bypass)
     bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # 2. Org admin can do everything under their org
+    # Org admin can do everything under their org
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
-    # 3. Host (owner) can do everything
-    policy action_type([:read, :create, :update, :destroy]) do
+    # Host (owner) can do everything
+    policy action_type([:read, :update, :destroy]) do
       authorize_if relates_to_actor_via([:game_room, :host])
     end
 
-    # 4. Org members can read org resources
-    policy action_type(:read) do
-      authorize_if {Flashwars.Policies.OrgMemberViaGameRoomOrgRead, []}
+    policy action_type(:create) do
+      authorize_if always()
     end
 
-    # 5. Game participants can read (if applicable)
+    # Org members can read org resources
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    # Game participants can read (if applicable)
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.GameParticipantViaRoomRead, []}
     end
@@ -56,11 +68,13 @@ defmodule Flashwars.Games.GameRound do
     attribute :question_data, :map, default: %{}
     attribute :started_at, :utc_datetime
     attribute :ended_at, :utc_datetime
+    attribute :organization_id, :uuid
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
 
   relationships do
     belongs_to :game_room, Flashwars.Games.GameRoom, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
   end
 end

@@ -11,6 +11,9 @@ defmodule Flashwars.Repo.Migrations.InitializeAndAddAuthenticationResourcesAndAd
     create table(:users, primary_key: false) do
       add :id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true
       add :email, :citext, null: false
+      add :site_admin, :boolean, default: false
+      add :settings, :map, default: %{}
+      add :last_login_at, :utc_datetime
     end
 
     create unique_index(:users, [:email], name: "users_unique_email_index")

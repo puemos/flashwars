@@ -15,22 +15,27 @@ defmodule Flashwars.Content.SetTag do
   end
 
   policies do
-    # 1. Site admin can do everything (bypass)
+    # Site admin can do everything (bypass)
     bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # 2. Org admin can do everything under their org
+    # Org admin can do everything under their org
     policy action_type([:read, :create, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
-    # 3. Owners can do everything
-    policy action_type([:read, :create, :destroy]) do
+    # Owners can update/destroy via study set owner
+    policy action_type([:read, :update, :destroy]) do
       authorize_if relates_to_actor_via([:study_set, :owner])
     end
 
-    # 4. Org members can read org resources
+    # Anyone can create terms
+    policy action_type(:create) do
+      authorize_if always()
+    end
+
+    # Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
@@ -38,6 +43,7 @@ defmodule Flashwars.Content.SetTag do
 
   attributes do
     uuid_primary_key :id
+    attribute :organization_id, :uuid
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
@@ -45,6 +51,7 @@ defmodule Flashwars.Content.SetTag do
   relationships do
     belongs_to :study_set, Flashwars.Content.StudySet, allow_nil?: false
     belongs_to :tag, Flashwars.Content.Tag, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
   end
 
   identities do

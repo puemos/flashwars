@@ -14,20 +14,21 @@ defmodule Flashwars.Classroom.Assignment do
     defaults [:read, :update, :destroy]
 
     create :create do
-      accept [:mode, :due_at, :section_id, :study_set_id]
+      accept [:mode, :due_at, :section_id, :study_set_id, :organization_id]
     end
   end
 
   policies do
-    policy always(), do: forbid_if(always())
-
-    policy action_type(:read) do
-      authorize_if {Flashwars.Policies.OrgMemberViaSectionClassRead, []}
-      authorize_if actor_attribute_equals(:site_admin, true)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if actor_attribute_equals(:site_admin, true)
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
   end
 
@@ -39,6 +40,7 @@ defmodule Flashwars.Classroom.Assignment do
       default: :test
 
     attribute :due_at, :utc_datetime
+    attribute :organization_id, :uuid
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
@@ -46,5 +48,6 @@ defmodule Flashwars.Classroom.Assignment do
   relationships do
     belongs_to :section, Flashwars.Classroom.Section, allow_nil?: false
     belongs_to :study_set, Flashwars.Content.StudySet, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
   end
 end

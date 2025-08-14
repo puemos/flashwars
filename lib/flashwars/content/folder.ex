@@ -19,22 +19,27 @@ defmodule Flashwars.Content.Folder do
   end
 
   policies do
-    # 1. Site admin can do everything (bypass)
+    # Site admin can do everything (bypass)
     bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # 2. Org admin can do everything under their org
+    # Org admin can do everything under their org
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
-    # 3. Owners can do everything
-    policy action_type([:read, :create, :update, :destroy]) do
+    # Owners can do everything
+    policy action_type([:read, :update, :destroy]) do
       authorize_if relates_to_actor_via(:owner)
     end
 
-    # 4. Org members can read org resources
+    # Anyone can create terms
+    policy action_type(:create) do
+      authorize_if always()
+    end
+
+    # Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end

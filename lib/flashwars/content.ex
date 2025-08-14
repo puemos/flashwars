@@ -19,6 +19,7 @@ defmodule Flashwars.Content do
 
     resource Flashwars.Content.Tag do
       define :create_tag, action: :create
+      define :update_tag, action: :update
     end
 
     resource Flashwars.Content.SetTag do

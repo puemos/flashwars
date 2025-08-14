@@ -4,7 +4,7 @@ defmodule Flashwars.Policies.OrgMemberRead do
 
   @impl true
   def filter(_actor, _context, _opts) do
-    expr(not is_nil(organization_id) and exists(organization.memberships, user_id == actor(:id)))
+    expr(not is_nil(organization_id) and exists(organization.memberships, user_id == ^actor(:id)))
   end
 
   @impl Ash.Policy.Check

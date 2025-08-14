@@ -14,7 +14,7 @@ defmodule Flashwars.Content.Term do
     defaults [:read, :update, :destroy]
 
     create :create do
-      accept [:term, :definition, :position, :study_set_id]
+      accept [:term, :definition, :position, :study_set_id, :organization_id]
     end
 
     read :for_study_set do
@@ -25,22 +25,27 @@ defmodule Flashwars.Content.Term do
   end
 
   policies do
-    # 1. Site admin can do everything (bypass)
+    # Site admin can do everything (bypass)
     bypass actor_attribute_equals(:site_admin, true) do
       authorize_if always()
     end
 
-    # 2. Org admin can do everything under their org
+    # Org admin can do everything under their org
     policy action_type([:read, :create, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
-    # 3. Owners can do everything
-    policy action_type([:read, :create, :update, :destroy]) do
+    # Owners can update/destroy via study set owner
+    policy action_type([:read, :update, :destroy]) do
       authorize_if relates_to_actor_via([:study_set, :owner])
     end
 
-    # 4. Org members can read terms via study set organization
+    # Anyone can create terms
+    policy action_type(:create) do
+      authorize_if always()
+    end
+
+    # Org members can read terms via study set organization
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
     end
@@ -52,12 +57,13 @@ defmodule Flashwars.Content.Term do
     attribute :definition, :string, allow_nil?: false
     attribute :position, :integer, default: 0
     attribute :distractors, {:array, :string}, default: []
-
+    attribute :organization_id, :uuid
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
 
   relationships do
     belongs_to :study_set, Flashwars.Content.StudySet, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
   end
 end

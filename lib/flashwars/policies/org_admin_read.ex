@@ -15,7 +15,7 @@ defmodule Flashwars.Policies.OrgAdminRead do
   def filter(_actor, _context, _opts) do
     expr(
       not is_nil(organization_id) and
-        exists(organization.memberships, user_id == actor(:id) and role == :admin)
+        exists(organization.memberships, user_id == ^actor(:id) and role == :admin)
     )
   end
 

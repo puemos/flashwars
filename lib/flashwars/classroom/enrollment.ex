@@ -14,7 +14,7 @@ defmodule Flashwars.Classroom.Enrollment do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:section_id, :role]
+      accept [:section_id, :role, :organization_id]
       change relate_actor(:user)
     end
 
@@ -24,22 +24,31 @@ defmodule Flashwars.Classroom.Enrollment do
   end
 
   policies do
-    policy always(), do: forbid_if(always())
-
-    policy action_type(:read) do
-      authorize_if relates_to_actor_via(:user)
-      authorize_if {Flashwars.Policies.OrgMemberViaSectionClassRead, []}
-      authorize_if actor_attribute_equals(:site_admin, true)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if actor_attribute_equals(:site_admin, true)
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    policy action_type([:read, :update, :destroy]) do
+      authorize_if relates_to_actor_via(:user)
+    end
+
+    policy action_type(:create) do
+      authorize_if always()
+    end
+
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
   end
 
   attributes do
     uuid_primary_key :id
     attribute :role, :atom, constraints: [one_of: [:student, :teacher]], default: :student
+    attribute :organization_id, :uuid
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
@@ -47,6 +56,7 @@ defmodule Flashwars.Classroom.Enrollment do
   relationships do
     belongs_to :section, Flashwars.Classroom.Section, allow_nil?: false
     belongs_to :user, Flashwars.Accounts.User, allow_nil?: false
+    belongs_to :organization, Flashwars.Org.Organization
   end
 
   identities do

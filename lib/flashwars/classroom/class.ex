@@ -19,15 +19,16 @@ defmodule Flashwars.Classroom.Class do
   end
 
   policies do
-    policy always(), do: forbid_if(always())
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
+    end
+
+    policy action_type([:read, :create, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
 
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
-      authorize_if actor_attribute_equals(:site_admin, true)
-    end
-
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if actor_attribute_equals(:site_admin, true)
     end
   end
 
