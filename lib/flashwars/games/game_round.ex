@@ -11,7 +11,11 @@ defmodule Flashwars.Games.GameRound do
   end
 
   actions do
-    defaults [:read, :create, :update, :destroy]
+    defaults [:read, :update, :destroy]
+
+    create :create do
+      accept [:number, :state, :question_data, :started_at, :ended_at, :game_room_id]
+    end
   end
 
   policies do

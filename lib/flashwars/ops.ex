@@ -2,15 +2,12 @@ defmodule Flashwars.Ops do
   use Ash.Domain, otp_app: :flashwars
 
   resources do
-    resource Flashwars.Ops.Notification
-    resource Flashwars.Ops.AuditLog
+    resource Flashwars.Ops.Notification do
+      define :notify, action: :create
+    end
+
+    resource Flashwars.Ops.AuditLog do
+      define :audit, action: :create
+    end
   end
-
-  alias Flashwars.Ops.{Notification, AuditLog}
-
-  def notify(params, opts \\ []),
-    do: Notification |> Ash.Changeset.for_create(:create, params, opts) |> Ash.create()
-
-  def audit(params, opts \\ []),
-    do: AuditLog |> Ash.Changeset.for_create(:create, params, opts) |> Ash.create()
 end

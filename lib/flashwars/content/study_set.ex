@@ -49,21 +49,22 @@ defmodule Flashwars.Content.StudySet do
   end
 
   policies do
-    # Default deny
-    policy always() do
-      forbid_if always()
+    # Allow creates for anyone (ownership is set by relate_actor/2)
+    policy action_type(:create) do
+      authorize_if always()
     end
 
-    # Owner access
+    # Owner access for updating or deleting
+    policy action_type([:update, :destroy]) do
+      authorize_if relates_to_actor_via(:owner)
+    end
+
+    # Owner access for reads
     policy action_type(:read) do
       authorize_if relates_to_actor_via(:owner)
     end
 
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if relates_to_actor_via(:owner)
-    end
-
-    # Public content readable by anyone
+    # Public read access
     policy action(:public) do
       authorize_if always()
     end
@@ -73,12 +74,12 @@ defmodule Flashwars.Content.StudySet do
       authorize_if always()
     end
 
-    # Organization members can read org-owned sets
+    # Org members can read org-owned sets
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
 
-    # Site admins can do anything for moderation
+    # Site admins can do anything
     policy always() do
       authorize_if actor_attribute_equals(:site_admin, true)
     end

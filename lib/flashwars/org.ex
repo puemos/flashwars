@@ -1,25 +1,17 @@
 defmodule Flashwars.Org do
   use Ash.Domain, otp_app: :flashwars
-  require Ash.Query
 
   resources do
-    resource Flashwars.Org.Organization
-    resource Flashwars.Org.OrgMembership
-    resource Flashwars.Org.OrgDomain
-  end
+    resource Flashwars.Org.Organization do
+      define :create_organization, action: :create
+    end
 
-  alias Flashwars.Org.{Organization, OrgMembership, OrgDomain}
+    resource Flashwars.Org.OrgMembership do
+      define :add_member, action: :create
+    end
 
-  # Organization
-  def create_organization(params, opts \\ []) do
-    Organization |> Ash.Changeset.for_create(:create, params, opts) |> Ash.create()
-  end
-
-  def add_org_domain(params, opts \\ []) do
-    OrgDomain |> Ash.Changeset.for_create(:create, params, opts) |> Ash.create()
-  end
-
-  def add_member(params, opts \\ []) do
-    OrgMembership |> Ash.Changeset.for_create(:create, params, opts) |> Ash.create()
+    resource Flashwars.Org.OrgDomain do
+      define :add_org_domain, action: :create
+    end
   end
 end
