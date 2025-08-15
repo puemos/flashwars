@@ -37,7 +37,8 @@ defmodule Flashwars.Org do
     else
       name = default_org_name(email)
 
-      with {:ok, org} <- Ash.create(Organization, %{name: name}, action: :create, authorize?: false),
+      with {:ok, org} <-
+             Ash.create(Organization, %{name: name}, action: :create, authorize?: false),
            {:ok, _mem} <-
              Ash.create(
                OrgMembership,
@@ -54,6 +55,7 @@ defmodule Flashwars.Org do
   end
 
   defp default_org_name(nil), do: "My Organization"
+
   defp default_org_name(email) do
     email = to_string(email)
     local = email |> String.split("@", parts: 2) |> List.first()

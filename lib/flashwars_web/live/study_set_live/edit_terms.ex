@@ -54,7 +54,7 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
       <.header>
         Add Terms
         <:subtitle>Set: {@study_set.name}</:subtitle>

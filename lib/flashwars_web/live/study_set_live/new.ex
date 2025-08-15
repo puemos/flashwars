@@ -12,7 +12,10 @@ defmodule FlashwarsWeb.StudySetLive.New do
      socket
      |> assign(:page_title, "New Study Set")
      |> assign_new(:current_scope, fn -> nil end)
-     |> assign(:form, to_form(%{"name" => "", "description" => "", "privacy" => "private"}, as: :study_set))}
+     |> assign(
+       :form,
+       to_form(%{"name" => "", "description" => "", "privacy" => "private"}, as: :study_set)
+     )}
   end
 
   def handle_event("validate", %{"study_set" => params}, socket) do
@@ -55,7 +58,7 @@ defmodule FlashwarsWeb.StudySetLive.New do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
       <.header>
         New Study Set
         <:subtitle>Create a study set, then add terms</:subtitle>

@@ -32,6 +32,7 @@ defmodule FlashwarsWeb.StudySetLiveTest do
       }
     )
     |> render_submit()
+
     {path, _opts} = assert_redirect(lv, 500)
     assert path =~ ~r{/orgs/#{org.id}/study_sets/.+/terms$}
   end

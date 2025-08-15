@@ -4,6 +4,8 @@ defmodule FlashwarsWeb.Layouts do
   used by your application.
   """
   use FlashwarsWeb, :html
+  import Ash.Query
+  alias Flashwars.Org.{Organization, OrgMembership}
 
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
@@ -31,40 +33,97 @@ defmodule FlashwarsWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :current_user, :map, default: nil, doc: "the current signed-in user, if any"
+  # Optional: allow callers to provide preloaded orgs for efficiency
+  attr :orgs, :any, default: nil
+
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:orgs, fn ->
+        case assigns[:current_user] do
+          nil ->
+            []
+
+          user ->
+            OrgMembership
+            |> filter(user_id == ^user.id)
+            |> Ash.read!(actor: user, authorize?: false)
+            |> Enum.map(& &1.organization_id)
+            |> then(fn ids ->
+              if ids == [] do
+                []
+              else
+                Organization |> filter(id in ^ids) |> Ash.read!(actor: user, authorize?: false)
+              end
+            end)
+        end
+      end)
+      |> assign_new(:orgs_count, fn -> length(assigns[:orgs] || []) end)
+
     ~H"""
     <header class="navbar px-4 sm:px-6 lg:px-8">
       <div class="flex-1">
         <a href={~p"/"} class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
           <span class="text-sm font-semibold">Flashwars</span>
+          <span class="badge badge-xs badge-secondary ml-1">beta</span>
         </a>
       </div>
       <div class="flex-none">
         <ul class="menu menu-horizontal px-1 items-center gap-1">
-          <li>
+          <li :if={@current_user && @orgs_count > 1}>
+            <details class="dropdown dropdown-end">
+              <summary class="btn btn-ghost">
+                <span class="mr-2">Org</span>
+                <.icon name="hero-chevron-down" class="w-4 h-4" />
+              </summary>
+              <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-56 p-2 shadow max-h-72 overflow-auto">
+                <li :for={org <- @orgs}>
+                  <.link navigate={~p"/orgs/#{org.id}"}>
+                    <span class={[
+                      "truncate",
+                      @current_scope && @current_scope[:org_id] == org.id && "font-semibold"
+                    ]}>
+                      {org.name}
+                    </span>
+                  </.link>
+                </li>
+              </ul>
+            </details>
+          </li>
+          <li :if={@current_user && @orgs_count == 0}>
             <.link navigate={~p"/orgs"} class="btn btn-ghost">Organizations</.link>
           </li>
-          <li :if={@current_scope && @current_scope[:org_id]}>
-            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Home</.link>
+          <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
+            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Play</.link>
           </li>
-          <li :if={@current_scope && @current_scope[:org_id]}>
-            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"} class="btn btn-ghost">
-              New Set
+          <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
+            <.link
+              navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"}
+              class="btn btn-ghost"
+            >
+              Build Set
             </.link>
           </li>
           <li>
             <.theme_toggle />
           </li>
-          <li>
+          <li :if={@current_user}>
             <details class="dropdown dropdown-end">
               <summary class="btn btn-ghost">Account</summary>
               <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-52 p-2 shadow">
                 <li><a href={~p"/sign-out"}>Sign out</a></li>
               </ul>
             </details>
+          </li>
+          <li :if={!@current_user}>
+            <a href={~p"/sign-in"} class="btn btn-ghost">Sign in</a>
+          </li>
+          <li :if={!@current_user}>
+            <a href={~p"/register"} class="btn btn-primary">Play Now</a>
           </li>
         </ul>
       </div>

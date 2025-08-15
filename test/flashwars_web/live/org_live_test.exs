@@ -30,10 +30,12 @@ defmodule FlashwarsWeb.OrgLiveTest do
     org =
       Organization
       |> Ash.read!(authorize?: false)
-      |> Enum.find(fn o -> o.name =~ "orghome" end)
+      |> Enum.find(fn o -> String.contains?(String.downcase(o.name), "orghome") end)
 
     conn = sign_in(conn, user)
     {:ok, _lv, html} = live(conn, ~p"/orgs/#{org.id}")
     assert html =~ "New Study Set"
+    assert html =~ "My Study Sets"
+    assert html =~ "Recent Activity"
   end
 end

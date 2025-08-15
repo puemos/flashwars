@@ -41,6 +41,7 @@ defmodule FlashwarsWeb.OnMount.CurrentOrg do
   end
 
   defp authorized_member?(nil, _), do: false
+
   defp authorized_member?(actor, org_id) do
     OrgMembership
     |> filter(organization_id == ^org_id and user_id == ^actor.id)
@@ -48,10 +49,10 @@ defmodule FlashwarsWeb.OnMount.CurrentOrg do
   end
 
   defp authorized_admin?(nil, _), do: false
+
   defp authorized_admin?(actor, org_id) do
     OrgMembership
     |> filter(organization_id == ^org_id and user_id == ^actor.id and role == :admin)
     |> Ash.exists?(actor: actor, authorize?: false)
   end
 end
-

@@ -19,4 +19,3 @@ defmodule FlashwarsWeb.AuthRedirects do
     end
   end
 end
-

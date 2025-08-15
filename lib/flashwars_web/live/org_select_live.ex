@@ -31,7 +31,12 @@ defmodule FlashwarsWeb.OrgSelectLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_user={@current_user}
+      orgs={@orgs}
+    >
       <.header>
         Choose an organization
         <:subtitle>Select where to work</:subtitle>
@@ -54,4 +59,3 @@ defmodule FlashwarsWeb.OrgSelectLive do
     """
   end
 end
-

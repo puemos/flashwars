@@ -37,4 +37,3 @@ defmodule Flashwars.Org.ProvisioningTest do
     assert length(mems) == 1
   end
 end
-
