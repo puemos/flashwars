@@ -9,6 +9,13 @@ defmodule Flashwars.UseCases.LearningAndGamesFlowTest do
   alias Flashwars.Org.Organization
 
   describe "learning flow (public study set)" do
+    @doc """
+    Tests that anonymous users can access and read terms from a public study set.
+    This verifies the basic access control for public content:
+    1. Creates an organization and admin user
+    2. Creates a public study set with sample terms
+    3. Verifies terms can be read and retrieved correctly
+    """
     test "anonymous can read terms of a public study set" do
       org = Ash.Seed.seed!(Organization, %{name: "Org"})
       admin = Ash.Seed.seed!(User, %{email: "admin-public@example.com"})
@@ -52,6 +59,17 @@ defmodule Flashwars.UseCases.LearningAndGamesFlowTest do
   end
 
   describe "games flow (link shared room + participant submissions)" do
+    @doc """
+    Tests the game participation flow with submissions and rounds:
+    1. Sets up an organization with host and player users
+    2. Creates a private study set and game room
+    3. Creates a game round with a question
+    4. Simulates player submission
+    5. Verifies that:
+       - Participants can read all submissions in the room
+       - Game rounds are properly accessible
+       - Permissions are enforced correctly
+    """
     test "participant can read all submissions and rounds load by token" do
       org = Ash.Seed.seed!(Organization, %{name: "PlayOrg"})
       host = Ash.Seed.seed!(User, %{email: "host@example.com"})

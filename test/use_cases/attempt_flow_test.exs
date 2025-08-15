@@ -6,6 +6,16 @@ defmodule Flashwars.UseCases.AttemptFlowTest do
   alias Flashwars.Accounts.User
   alias Flashwars.Org.Organization
 
+  @doc """
+  This test verifies the complete flow of a student taking a test:
+  1. Setup of organization with admin and student users
+  2. Creation of a private study set with terms by the admin
+  3. Student creates an attempt to take the test
+  4. Student records their answer to a test question
+  5. Student's score is recorded on the leaderboard
+
+  The test ensures proper user associations and data integrity throughout the flow.
+  """
   test "student creates attempt, items, and leaderboard upsert" do
     org = Ash.Seed.seed!(Organization, %{name: "Org"})
     admin = Ash.Seed.seed!(User, %{email: "admin@ex.com"})

@@ -7,6 +7,21 @@ defmodule Flashwars.Learning.MasteryTest do
   alias Flashwars.Org.Organization
 
   describe "mastery_for_set/3" do
+    @doc """
+    This test verifies that the mastery_for_set function correctly classifies terms into different mastery categories:
+    - Mastered terms: Terms that have been answered correctly multiple times in a row
+    - Struggling terms: Terms with mixed correct/incorrect answers where the last attempt was incorrect
+    - Practicing terms: Terms that have been attempted but not mastered, with the last attempt being correct
+    - Unseen terms: Terms that have never been attempted
+
+    The test creates a study set with a few terms and simulates different learning scenarios:
+    - t1: Gets 3 correct answers in a row (mastered)
+    - t2: Gets mixed results with last attempt incorrect (struggling)
+    - t3: Never attempted (unseen)
+    - t4: Gets one correct answer but not enough for mastery (practicing)
+
+    It then verifies the classification and checks that each term summary includes the expected statistics.
+    """
     test "classifies mastered, struggling, and unseen terms" do
       org = Ash.Seed.seed!(Organization, %{name: "Org"})
       host = Ash.Seed.seed!(User, %{email: "host-mastery@example.com"})

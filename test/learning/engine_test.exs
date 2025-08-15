@@ -8,6 +8,12 @@ defmodule Flashwars.Learning.EngineTest do
   setup [:build_set]
 
   describe "generate_item/2" do
+    @doc """
+    Tests that when generating a multiple choice item:
+    - It creates exactly 4 choices
+    - The answer_index points to a valid choice
+    - Term exclusions are respected when generating subsequent items
+    """
     test "produces 4 choices with valid answer index and respects exclusions", %{set: set} do
       item1 = Engine.generate_item(set.id)
       term_id1 = item1.term_id
@@ -20,6 +26,12 @@ defmodule Flashwars.Learning.EngineTest do
   end
 
   describe "flashcards" do
+    @doc """
+    Tests different ordering strategies for flashcards:
+    - Alphabetical order excludes specified terms
+    - Position-based order returns cards in correct sequence
+    - Exclusion lists are properly respected
+    """
     test "order strategies and exclusions", %{user: user, set: set, terms: terms} do
       apple_id = terms["apple"].id
 
@@ -37,6 +49,11 @@ defmodule Flashwars.Learning.EngineTest do
       assert card2.front == "book"
     end
 
+    @doc """
+    Tests that smart ordering uses the scheduler:
+    - Creates a card state with due date in the past
+    - Verifies scheduler picks the overdue card first
+    """
     test "smart order uses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
@@ -57,6 +74,11 @@ defmodule Flashwars.Learning.EngineTest do
       assert card.front == "happy"
     end
 
+    @doc """
+    Tests that smart flag can bypass the scheduler:
+    - Creates a due card state
+    - Verifies smart:false ignores scheduler recommendations
+    """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
@@ -85,6 +107,14 @@ defmodule Flashwars.Learning.EngineTest do
   end
 
   describe "learning flow" do
+    @doc """
+    Tests the adaptive learning flow:
+    - Generates initial card
+    - Simulates failed review making card due immediately
+    - Verifies same card is shown again
+    - Simulates successful review pushing due date forward
+    - Verifies different card is shown next
+    """
     test "sessions adapt based on prior reviews", %{user: user, set: set, org: org} do
       card1 = Engine.generate_flashcard(user, set.id, order: :smart, seed: 3)
       now = DateTime.utc_now()
@@ -126,6 +156,16 @@ defmodule Flashwars.Learning.EngineTest do
   end
 
   describe "learn round" do
+    @doc """
+    Tests learn round item generation:
+    - Generates correct number of items
+    - No duplicate terms used
+    - Each item type follows its specific rules
+    - Multiple choice has 4 options
+    - True/False has correct choices
+    - Free text validates
+    - Matching has correct number of pairs
+    """
     test "mixed items obey rules", %{user: user, set: set, terms_by_id: terms_by_id} do
       items = Engine.generate_learn_round(user, set.id, size: 5, pair_count: 3, seed: 42)
       assert length(items) == 5
@@ -160,6 +200,12 @@ defmodule Flashwars.Learning.EngineTest do
       end
     end
 
+    @doc """
+    Tests smart flag behavior in learn rounds:
+    - Creates due card state
+    - Verifies smart:true follows scheduler
+    - Verifies smart:false ignores scheduler
+    """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
@@ -197,6 +243,12 @@ defmodule Flashwars.Learning.EngineTest do
   end
 
   describe "test mode" do
+    @doc """
+    Tests test generation with fixed size:
+    - Creates due card state
+    - Verifies scheduler prioritizes due items
+    - Generates test of specific size
+    """
     test "fixed size and prioritizes due items", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
@@ -220,6 +272,12 @@ defmodule Flashwars.Learning.EngineTest do
       assert length(items) == 1
     end
 
+    @doc """
+    Tests smart flag behavior in test mode:
+    - Creates due card state
+    - Verifies smart:true follows scheduler
+    - Verifies smart:false follows fixed order
+    """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 

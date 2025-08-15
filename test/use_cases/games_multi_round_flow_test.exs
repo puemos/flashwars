@@ -8,6 +8,16 @@ defmodule Flashwars.UseCases.GamesMultiRoundFlowTest do
   alias Flashwars.Org.Organization
 
   describe "games multi-round flow" do
+    @doc """
+    This test verifies the core gameplay flow in a multi-round game:
+    - Tests setup of game room with multiple players and rounds
+    - Validates question format and answer options
+    - Tests submission mechanics for multiple players across rounds
+    - Verifies submission uniqueness per player per round
+    - Checks visibility rules for submissions between players
+    - Tests scoring aggregation across rounds
+    - Verifies proper filtering of submissions by room
+    """
     test "players submit across rounds; participants can read all submissions in their room" do
       org = Ash.Seed.seed!(Organization, %{name: "PlayOrg"})
       host = Ash.Seed.seed!(User, %{email: "host-mr@example.com"})
