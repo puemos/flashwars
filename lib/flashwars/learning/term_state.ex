@@ -1,4 +1,4 @@
-defmodule Flashwars.Learning.CardState do
+defmodule Flashwars.Learning.TermState do
   use Ash.Resource,
     otp_app: :flashwars,
     domain: Flashwars.Learning,
@@ -19,7 +19,7 @@ defmodule Flashwars.Learning.CardState do
   """
 
   postgres do
-    table "card_states"
+    table "term_states"
     repo Flashwars.Repo
   end
 

@@ -6,7 +6,7 @@ defmodule Flashwars.Learning.Scheduler do
   relearning steps, growth caps, and queue building helpers.
   """
 
-  alias Flashwars.Learning.CardState
+  alias Flashwars.Learning.TermState
   require Ash.Query
 
   @r_star 0.80
@@ -32,9 +32,9 @@ defmodule Flashwars.Learning.Scheduler do
   end
 
   @doc """
-  Compute next schedule after a review and return updated fields for `CardState` and log info.
+  Compute next schedule after a review and return updated fields for `TermState` and log info.
   """
-  @spec schedule_after_review(CardState.t() | map, grade, integer | nil, DateTime.t()) ::
+  @spec schedule_after_review(TermState.t() | map, grade, integer | nil, DateTime.t()) ::
           {:ok, %{update: map, log: map}}
   def schedule_after_review(card, grade, rt_ms, now) do
     # allow passing in maps for convenience in tests
@@ -116,7 +116,7 @@ defmodule Flashwars.Learning.Scheduler do
 
     # existing states due
     due_states =
-      CardState
+      TermState
       |> Ash.Query.for_read(:for_user_set, %{study_set_id: study_set_id}, actor: user)
       |> Ash.read!(actor: user)
       |> Enum.filter(fn cs ->
@@ -153,7 +153,7 @@ defmodule Flashwars.Learning.Scheduler do
 
     # existing states map
     states =
-      CardState
+      TermState
       |> Ash.Query.for_read(:for_user_set, %{study_set_id: study_set_id}, actor: user)
       |> Ash.read!(actor: user)
       |> Map.new(&{&1.term_id, true})

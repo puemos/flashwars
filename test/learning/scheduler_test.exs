@@ -10,12 +10,12 @@ defmodule Flashwars.Learning.SchedulerTest do
     @doc """
     Tests the learning scheduler's behavior for successful and failed review attempts.
     This test verifies that:
-    - Successful reviews update card state with correct scheduling metadata
+    - Successful reviews update term state with correct scheduling metadata
     - Failed reviews trigger relearning steps with appropriate intervals
     - Review attempts are properly logged with metadata like response time
     - Card state is updated with next due dates based on performance
     """
-    test "success and failure update card state and log AttemptItem metadata" do
+    test "success and failure update term state and log AttemptItem metadata" do
       org = Ash.Seed.seed!(Organization, %{name: "Org"})
       admin = Ash.Seed.seed!(User, %{email: "admin-sched@example.com"})
       student = Ash.Seed.seed!(User, %{email: "student-sched@example.com"})
@@ -45,9 +45,9 @@ defmodule Flashwars.Learning.SchedulerTest do
       assert res1.item.grade == :good
       assert is_float(res1.item.s_after)
       assert is_float(res1.item.d_after)
-      # card state has a next due in the future
+      # term state has a next due in the future
       cs =
-        Learning.CardState
+        Learning.TermState
         |> Ash.Query.filter(user_id == ^student.id and term_id == ^t.id)
         |> Ash.read!(authorize?: false)
         |> List.first()
@@ -60,7 +60,7 @@ defmodule Flashwars.Learning.SchedulerTest do
       assert res2.item.grade == :again
 
       cs2 =
-        Learning.CardState
+        Learning.TermState
         |> Ash.Query.filter(user_id == ^student.id and term_id == ^t.id)
         |> Ash.read!(authorize?: false)
         |> List.first()

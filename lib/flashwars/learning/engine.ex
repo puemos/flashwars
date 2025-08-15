@@ -103,7 +103,7 @@ defmodule Flashwars.Learning.Engine do
   - `study_set_id` - ID of study set to generate from
   - `opts` - Keyword list of options (see `generate_item/2`)
 
-  Falls back to generic term picking via `generate_item/2` when no CardState exists for the user.
+  Falls back to generic term picking via `generate_item/2` when no TermState exists for the user.
   """
   @spec generate_item_for_user(user(), study_set_id(), generation_opts()) :: item()
   def generate_item_for_user(user, study_set_id, opts \\ []) do

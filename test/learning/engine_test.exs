@@ -3,7 +3,7 @@ defmodule Flashwars.Learning.EngineTest do
 
   import Flashwars.Test.LearningFixtures, only: [build_set: 1]
 
-  alias Flashwars.Learning.{Engine, CardState}
+  alias Flashwars.Learning.{Engine, TermState}
 
   setup [:build_set]
 
@@ -51,13 +51,13 @@ defmodule Flashwars.Learning.EngineTest do
 
     @doc """
     Tests that smart ordering uses the scheduler:
-    - Creates a card state with due date in the past
+    - Creates a term state with due date in the past
     - Verifies scheduler picks the overdue card first
     """
     test "smart order uses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :create,
         %{
@@ -76,13 +76,13 @@ defmodule Flashwars.Learning.EngineTest do
 
     @doc """
     Tests that smart flag can bypass the scheduler:
-    - Creates a due card state
+    - Creates a due term state
     - Verifies smart:false ignores scheduler recommendations
     """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :create,
         %{
@@ -120,7 +120,7 @@ defmodule Flashwars.Learning.EngineTest do
       now = DateTime.utc_now()
 
       # simulate a failed review so the card is due immediately
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :upsert,
         %{
@@ -137,7 +137,7 @@ defmodule Flashwars.Learning.EngineTest do
       assert card2.term_id == card1.term_id
 
       # simulate a correct review pushing due date into future
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :upsert,
         %{
@@ -202,14 +202,14 @@ defmodule Flashwars.Learning.EngineTest do
 
     @doc """
     Tests smart flag behavior in learn rounds:
-    - Creates due card state
+    - Creates due term state
     - Verifies smart:true follows scheduler
     - Verifies smart:false ignores scheduler
     """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :create,
         %{
@@ -245,14 +245,14 @@ defmodule Flashwars.Learning.EngineTest do
   describe "test mode" do
     @doc """
     Tests test generation with fixed size:
-    - Creates due card state
+    - Creates due term state
     - Verifies scheduler prioritizes due items
     - Generates test of specific size
     """
     test "fixed size and prioritizes due items", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :create,
         %{
@@ -274,14 +274,14 @@ defmodule Flashwars.Learning.EngineTest do
 
     @doc """
     Tests smart flag behavior in test mode:
-    - Creates due card state
+    - Creates due term state
     - Verifies smart:true follows scheduler
     - Verifies smart:false follows fixed order
     """
     test "smart flag bypasses scheduler", %{user: user, set: set, org: org, terms: terms} do
       now = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      CardState
+      TermState
       |> Ash.Changeset.for_create(
         :create,
         %{

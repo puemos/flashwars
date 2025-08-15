@@ -17,8 +17,8 @@ defmodule Flashwars.Learning do
 
     resource Flashwars.Learning.Session
 
-    resource Flashwars.Learning.CardState do
-      define :upsert_card_state, action: :upsert
+    resource Flashwars.Learning.TermState do
+      define :upsert_term_state, action: :upsert
     end
   end
 
@@ -29,7 +29,7 @@ defmodule Flashwars.Learning do
   end
 
   @doc """
-  Review a term, updating CardState and logging an AttemptItem with scheduler metadata.
+  Review a term, updating TermState and logging an AttemptItem with scheduler metadata.
 
   Options:
   - :attempt_id (optional) – attempts are required for items; if absent, a new one is created
@@ -44,9 +44,9 @@ defmodule Flashwars.Learning do
     term = Ash.get!(Flashwars.Content.Term, term_id, authorize?: false)
     set_id = term.study_set_id
 
-    # load or init card state
+    # load or init term state
     cs_existing =
-      Flashwars.Learning.CardState
+      Flashwars.Learning.TermState
       |> Ash.Query.filter(user_id == ^user.id and term_id == ^term_id)
       |> Ash.read!(authorize?: false)
       |> List.first()
@@ -73,9 +73,9 @@ defmodule Flashwars.Learning do
 
     with {:ok, %{update: update, log: log}} <-
            Flashwars.Learning.Scheduler.schedule_after_review(cs_map, grade, rt_ms, now) do
-      # upsert card state
+      # upsert term state
       _cs =
-        Flashwars.Learning.CardState
+        Flashwars.Learning.TermState
         |> Ash.Changeset.for_create(
           :upsert,
           Map.merge(update, %{term_id: term_id, study_set_id: set_id}),
