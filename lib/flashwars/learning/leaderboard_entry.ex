@@ -74,7 +74,7 @@ defmodule Flashwars.Learning.LeaderboardEntry do
     attribute :scope, :string
 
     attribute :mode, :atom,
-      constraints: [one_of: [:flashcards, :learn, :test, :match, :game]],
+      constraints: [one_of: [:flashcards, :learn, :test, :game]],
       default: :game
 
     attribute :score, :integer, allow_nil?: false
