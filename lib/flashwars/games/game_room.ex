@@ -18,7 +18,42 @@ defmodule Flashwars.Games.GameRoom do
       argument :study_set_id, :uuid, allow_nil?: false
       change relate_actor(:host)
       change set_attribute(:study_set_id, arg(:study_set_id))
+
+      change fn changeset, _ctx ->
+        case {Ash.Changeset.get_attribute(changeset, :organization_id),
+              Ash.Changeset.get_attribute(changeset, :study_set_id)} do
+          {nil, set_id} when not is_nil(set_id) ->
+            case Ash.get(Flashwars.Content.StudySet, set_id) do
+              {:ok, set} ->
+                Ash.Changeset.change_attribute(changeset, :organization_id, set.organization_id)
+
+              _ ->
+                changeset
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      change fn changeset, _ctx ->
+        case Ash.Changeset.get_attribute(changeset, :privacy) do
+          :link_only ->
+            Ash.Changeset.change_attribute(
+              changeset,
+              :link_token,
+              __MODULE__.generate_link_token()
+            )
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:organization_id)
     end
+
+    # read :with_link_token is defined when DB supports link-sharing
 
     update :start_game do
       accept []
@@ -67,6 +102,8 @@ defmodule Flashwars.Games.GameRoom do
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.GameParticipantRead, []}
     end
+
+    # Link-token based read is allowed when enabled
   end
 
   attributes do
@@ -100,5 +137,9 @@ defmodule Flashwars.Games.GameRoom do
     end
 
     has_many :submissions, Flashwars.Games.GameSubmission
+  end
+
+  def generate_link_token do
+    :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
   end
 end

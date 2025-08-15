@@ -15,6 +15,7 @@ defmodule Flashwars.Classroom.Assignment do
 
     create :create do
       accept [:mode, :due_at, :section_id, :study_set_id, :organization_id]
+      validate present(:organization_id)
     end
   end
 

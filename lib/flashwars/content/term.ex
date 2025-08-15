@@ -15,6 +15,28 @@ defmodule Flashwars.Content.Term do
 
     create :create do
       accept [:term, :definition, :position, :study_set_id, :organization_id]
+
+      change fn changeset, _ctx ->
+        case Ash.Changeset.get_attribute(changeset, :organization_id) do
+          nil ->
+            case Ash.Changeset.get_attribute(changeset, :study_set_id) do
+              nil ->
+                changeset
+
+              set_id ->
+                with {:ok, set} <- Ash.get(Flashwars.Content.StudySet, set_id, authorize?: false) do
+                  Ash.Changeset.change_attribute(changeset, :organization_id, set.organization_id)
+                else
+                  _ -> changeset
+                end
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:organization_id)
     end
 
     read :for_study_set do
@@ -47,7 +69,8 @@ defmodule Flashwars.Content.Term do
 
     # Org members can read terms via study set organization
     policy action_type(:read) do
-      authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
+      authorize_if {Flashwars.Policies.PublicViaStudySetRead, []}
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
   end
 

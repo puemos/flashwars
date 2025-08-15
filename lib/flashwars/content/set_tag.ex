@@ -11,7 +11,33 @@ defmodule Flashwars.Content.SetTag do
   end
 
   actions do
-    defaults [:read, :create, :destroy]
+    defaults [:read, :destroy]
+
+    create :create do
+      accept [:study_set_id, :tag_id, :organization_id]
+
+      change fn changeset, _ctx ->
+        case Ash.Changeset.get_attribute(changeset, :organization_id) do
+          nil ->
+            case Ash.Changeset.get_attribute(changeset, :study_set_id) do
+              nil ->
+                changeset
+
+              set_id ->
+                with {:ok, set} <- Ash.get(Flashwars.Content.StudySet, set_id, authorize?: false) do
+                  Ash.Changeset.change_attribute(changeset, :organization_id, set.organization_id)
+                else
+                  _ -> changeset
+                end
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:organization_id)
+    end
   end
 
   policies do

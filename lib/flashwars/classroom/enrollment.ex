@@ -16,6 +16,7 @@ defmodule Flashwars.Classroom.Enrollment do
     create :create do
       accept [:section_id, :role, :organization_id]
       change relate_actor(:user)
+      validate present(:organization_id)
     end
 
     update :set_role do

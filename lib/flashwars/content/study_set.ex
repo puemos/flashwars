@@ -17,6 +17,7 @@ defmodule Flashwars.Content.StudySet do
     create :create do
       accept [:name, :description, :privacy, :folder_id, :organization_id, :owner_id]
       change relate_actor(:owner)
+      validate present(:organization_id)
 
       change fn changeset, _ctx ->
         privacy = Ash.Changeset.get_attribute(changeset, :privacy)

@@ -15,6 +15,7 @@ defmodule Flashwars.Classroom.Section do
 
     create :create do
       accept [:name, :class_id, :organization_id]
+      validate present(:organization_id)
     end
   end
 

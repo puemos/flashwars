@@ -19,6 +19,25 @@ defmodule Flashwars.Learning.LeaderboardEntry do
       upsert_fields [:score, :submitted_at, :study_set_id]
       accept [:scope, :mode, :score, :submitted_at, :study_set_id, :organization_id]
       change relate_actor(:user)
+
+      change fn changeset, _ctx ->
+        case {Ash.Changeset.get_attribute(changeset, :organization_id),
+              Ash.Changeset.get_attribute(changeset, :study_set_id)} do
+          {nil, set_id} when not is_nil(set_id) ->
+            case Ash.get(Flashwars.Content.StudySet, set_id, authorize?: false) do
+              {:ok, set} ->
+                Ash.Changeset.change_attribute(changeset, :organization_id, set.organization_id)
+
+              _ ->
+                changeset
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:organization_id)
     end
   end
 
@@ -38,14 +57,15 @@ defmodule Flashwars.Learning.LeaderboardEntry do
       authorize_if relates_to_actor_via(:user)
     end
 
-    # Org admins can create under their org
+    # Org members can upsert leaderboard when associated to a set in their org; admins also allowed
     policy action_type(:create) do
+      authorize_if {Flashwars.Policies.OrgMemberViaStudySetCreate, []}
       authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     # Org members can read org resources
     policy action_type(:read) do
-      authorize_if {Flashwars.Policies.OrgMemberViaStudySetRead, []}
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
   end
 

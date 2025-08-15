@@ -25,6 +25,52 @@ defmodule Flashwars.Learning.Attempt do
       ]
 
       change relate_actor(:user)
+
+      change fn changeset, _ctx ->
+        # Prefer study_set.organization; if absent, use assignment.organization
+        case Ash.Changeset.get_attribute(changeset, :organization_id) do
+          nil ->
+            org_from_set =
+              case Ash.Changeset.get_attribute(changeset, :study_set_id) do
+                nil ->
+                  nil
+
+                set_id ->
+                  case Ash.get(Flashwars.Content.StudySet, set_id, authorize?: false) do
+                    {:ok, set} -> set.organization_id
+                    _ -> nil
+                  end
+              end
+
+            org_id =
+              if is_nil(org_from_set) do
+                case Ash.Changeset.get_attribute(changeset, :assignment_id) do
+                  nil ->
+                    nil
+
+                  asg_id ->
+                    case Ash.get(Flashwars.Classroom.Assignment, asg_id, authorize?: false) do
+                      {:ok, asg} -> asg.organization_id
+                      _ -> nil
+                    end
+                end
+              else
+                org_from_set
+              end
+
+            if is_nil(org_id) do
+              changeset
+            else
+              Ash.Changeset.change_attribute(changeset, :organization_id, org_id)
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:study_set_id)
+      validate present(:organization_id)
     end
   end
 
@@ -44,14 +90,15 @@ defmodule Flashwars.Learning.Attempt do
       authorize_if relates_to_actor_via(:user)
     end
 
-    # Org admins can create attempts under their org
+    # Org members (students) can create attempts under their org via assignment or set
     policy action_type(:create) do
+      authorize_if {Flashwars.Policies.OrgMemberViaAssignmentOrSetCreate, []}
       authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     # Org members can read org resources
     policy action_type(:read) do
-      authorize_if {Flashwars.Policies.OrgMemberViaAssignmentOrSetRead, []}
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
   end
 

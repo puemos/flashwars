@@ -15,6 +15,7 @@ defmodule Flashwars.Content.Folder do
 
     create :create do
       accept [:name, :owner_id, :organization_id]
+      validate present(:organization_id)
     end
   end
 

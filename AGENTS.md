@@ -21,8 +21,8 @@ custom classes must fully style the input
 <!-- usage-rules-header -->
 # Usage Rules
 
-**IMPORTANT**: Consult these usage rules early and often when working with the packages listed below. 
-Before attempting to use any of these packages or to discover if you should use them, review their 
+**IMPORTANT**: Consult these usage rules early and often when working with the packages listed below.
+Before attempting to use any of these packages or to discover if you should use them, review their
 usage rules to understand the correct patterns, conventions, and best practices.
 <!-- usage-rules-header-end -->
 
@@ -375,7 +375,7 @@ mix usage_rules.docs Enum.zip/1
 
 ## Searching Documentation
 
-You should also consult the documentation of any tools you are using, early and often. The best 
+You should also consult the documentation of any tools you are using, early and often. The best
 way to accomplish this is to use the `usage_rules.search_docs` mix task. Once you have
 found what you are looking for, use the links in the search results to get more detail. For example:
 
@@ -395,6 +395,83 @@ mix usage_rules.search_docs "Enum.zip" --query-by title
 
 
 <!-- usage_rules-end -->
+
+## Ash Domains and Resources
+
+This app uses Ash with Postgres. Most resources are organization-scoped via `organization_id` and use Ash policies for authorization. Study sets and game rooms support link sharing.
+
+- Conventions:
+  - `organization_id`: set on create/upsert (often auto-derived from related records). Policies assume it is present.
+  - Link sharing: `Content.StudySet` and `Games.GameRoom` support `:privacy` of `:private | :link_only`.
+    - Study sets: `read :with_link_token(token)` and `read :public` enable anonymous access when allowed.
+    - Game rooms: `read :with_link_token(token)` enables anonymous access to a shared room; `Games.GameRound.read :for_room_token(token)` lists shared room rounds.
+  - Participants: Users who submitted in a game can read all submissions for that room.
+  - Actor linking: Many creates relate the actor (e.g., `relate_actor(:user)` or `relate_actor(:host)`).
+
+### Domains
+
+- Accounts (`Flashwars.Accounts`)
+  - `User`: magic-link and API key auth; attributes `email`, `site_admin`, `settings`, `last_login_at`; actions include `get_by_subject`, `get_by_email`, `sign_in_with_magic_link`, `request_magic_link`, `sign_in_with_api_key`, updates `update_last_login`, `update_settings`.
+  - `ApiKey`: create (generates and hashes key), read, destroy; `valid` calculation; belongs_to `user`.
+  - `Token`: storage/revocation and lookups for auth tokens.
+
+- Content (`Flashwars.Content`)
+  - `StudySet`: attributes `name`, `description`, `privacy`, `link_token`, `owner_id`, `organization_id`; actions `create`, `update`, `archive` (soft), `public`, `with_link_token(token)`; relationships `owner`, `organization`, `folder`, many `terms`, many-to-many `tags` via `SetTag`.
+  - `Term`: belongs_to `study_set`, `organization`; actions `create` (org derived from study_set), `for_study_set(study_set_id)` (sorted by `position`). Public read allowed when parent set is public.
+  - `Folder`: `create` requires `organization_id`; relationships `owner`, `organization`, has_many `study_sets`.
+  - `Tag`: identity per org (`[:organization_id, :name]`); `create`, `update`, `destroy`, `read`. `organization_id` optional in tests; when provided, uniqueness is per org.
+  - `SetTag`: join resource; `create` derives `organization_id` from study_set.
+
+- Org (`Flashwars.Org`)
+  - `Organization`: `name`, `support_contact`; has_many `memberships`, `domains`.
+  - `OrgMembership`: `role` (`:member|:admin`); belongs_to `organization`, `user`; identity `[:organization_id, :user_id]`.
+  - `OrgDomain`: `domain`; belongs_to `organization`; identity `[:organization_id, :domain]`.
+
+- Classroom (`Flashwars.Classroom`)
+  - `Class`: `create` requires `organization_id`; has_many `sections`.
+  - `Section`: `create` requires `organization_id`; belongs_to `class`; has_many `enrollments`, `assignments`.
+  - `Enrollment`: `create` relates actor as `user` and requires `organization_id`; identity `[:section_id, :user_id]`.
+  - `Assignment`: `create` requires `organization_id`; belongs_to `section`, `study_set`.
+
+- Learning (`Flashwars.Learning`)
+  - `Attempt`: `create` relates actor as `user`; derives `organization_id` from `study_set` or `assignment`; belongs_to `user`, `study_set`, optional `assignment`; has_many `items`.
+  - `AttemptItem`: `create` requires/derives `organization_id` from related `attempt`; belongs_to `attempt`, `term`.
+  - `LeaderboardEntry`: `upsert` (identity `[:scope, :mode, :user_id]`); derives `organization_id` from `study_set` when provided.
+  - `Session`: `upsert` per `[:user_id, :study_set_id, :mode]`; derives `organization_id` from `study_set`; `read :for_user_set_mode(study_set_id, mode)` returns latest.
+
+- Games (`Flashwars.Games`)
+  - `GameRoom`: attributes `type`, lifecycle `state`, `config`, `rating_scope`, `privacy`, `link_token`, `organization_id`; `create` relates actor as `host`, requires `study_set_id`, derives `organization_id` from the set, generates `link_token` when `privacy == :link_only`; reads: `with_link_token(token)` for shared access; updates: `start_game`, `advance_state(new_state)`, `end_game`.
+  - `GameRound`: belongs_to `game_room`; `create` derives `organization_id` from room; read `for_room_token(token)` lists rounds for a shared room.
+  - `GameSubmission`: `create` relates actor as `user`; backfills `game_room_id` and `organization_id` from `game_round`; identity `[:game_round_id, :user_id]`; participants can read all submissions of their room.
+
+- Ops (`Flashwars.Ops`)
+  - `Notification`: `create` relates actor as `user`; `mark_read` sets `read_at`.
+  - `AuditLog`: `create` accepts `action`, `resource`, `resource_id`, `metadata`, `actor_id`.
+
+### Code Interface Shortcuts
+
+Domains define helpers via `define`:
+
+- Content: `get_folder_by_id/1`, `create_folder/1`; `get_study_set_by_id/1`, `create_study_set/1`; `get_term_by_id/1`, `create_term/1`; `create_tag/1`, `update_tag/1`; `get_set_tag_by_id/1`, `create_set_tag/1`.
+- Org: `create_organization/1`, `add_member/1`, `add_org_domain/1`.
+- Classroom: `create_class/1`, `create_section/1`, `enroll/1`, `create_assignment/1`.
+- Learning: `create_attempt/1`, `create_attempt_item/1`, `upsert_leaderboard/1`.
+- Games: `create_game_room/1`, `start_game/1`, `advance_state/2`, `end_game/1`; `GameRound` exposed with default actions; `GameSubmission.submit/1`.
+- Ops: `notify/1`, `audit/1`.
+
+### Policy Checks in Use
+
+- `Flashwars.Policies.OrgAdminRead`: org admin filter for read/update/destroy.
+- `Flashwars.Policies.OrgAdminCreate`: org admin simple check for create.
+- `Flashwars.Policies.OrgMemberRead`: org member filter for read.
+- `Flashwars.Policies.GameParticipantRead`: participant filter on `GameRoom` (actor has submissions in room).
+- `Flashwars.Policies.GameParticipantViaRoomRead`: participant filter via `game_room` relationship (used by `GameRound`/`GameSubmission`).
+- `Flashwars.Policies.PublicViaStudySetRead`: public read when related `study_set.privacy == :public` (used by `Term`).
+
+Notes for agents:
+- Prefer direct `organization_id` checks/policies; most create actions now ensure it is present (or derived).
+- For anonymous access, use tokened reads: `StudySet.with_link_token`, `GameRoom.with_link_token`, `GameRound.for_room_token`.
+- For game visibility beyond org membership, rely on participant policies; do not assume non-participant access to submissions unless via explicit new tokened reads.
 <!-- usage_rules:elixir-start -->
 ## usage_rules:elixir usage
 # Elixir Core Usage Rules
@@ -424,7 +501,7 @@ mix usage_rules.search_docs "Enum.zip" --query-by title
 - Use guard clauses: `when is_binary(name) and byte_size(name) > 0`
 - Prefer multiple function clauses over complex conditional logic
 - Name functions descriptively: `calculate_total_price/2` not `calc/2`
-- Predicate function names should not start with `is` and should end in a question mark. 
+- Predicate function names should not start with `is` and should end in a question mark.
 - Names like `is_thing` should be reserved for guards
 
 ## Data Structures

@@ -15,6 +15,7 @@ defmodule Flashwars.Classroom.Class do
 
     create :create do
       accept [:name, :description, :organization_id]
+      validate present(:organization_id)
     end
   end
 

@@ -9,7 +9,9 @@ defmodule Flashwars.Games do
       define :end_game, action: :end_game
     end
 
-    resource Flashwars.Games.GameRound
+    resource Flashwars.Games.GameRound do
+      define :generate_round, action: :generate_for_room
+    end
 
     resource Flashwars.Games.GameSubmission do
       define :submit, action: :create

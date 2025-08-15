@@ -63,6 +63,6 @@ defmodule Flashwars.Content.Tag do
   end
 
   identities do
-    identity :unique_name, [:name]
+    identity :unique_name_per_org, [:organization_id, :name]
   end
 end

@@ -16,6 +16,59 @@ defmodule Flashwars.Games.GameSubmission do
     create :create do
       accept [:answer, :correct, :score, :submitted_at, :game_round_id, :organization_id]
       change relate_actor(:user)
+
+      change fn changeset, _ctx ->
+        # Backfill game_room_id and organization_id from game_round if missing
+        round_id = Ash.Changeset.get_attribute(changeset, :game_round_id)
+
+        changeset =
+          case {Ash.Changeset.get_attribute(changeset, :game_room_id), round_id} do
+            {nil, round_id} when not is_nil(round_id) ->
+              case Ash.get(Flashwars.Games.GameRound, round_id, authorize?: false) do
+                {:ok, round} ->
+                  changeset =
+                    Ash.Changeset.change_attribute(changeset, :game_room_id, round.game_room_id)
+
+                  case Ash.Changeset.get_attribute(changeset, :organization_id) do
+                    nil ->
+                      Ash.Changeset.change_attribute(
+                        changeset,
+                        :organization_id,
+                        round.organization_id
+                      )
+
+                    _ ->
+                      changeset
+                  end
+
+                _ ->
+                  changeset
+              end
+
+            _ ->
+              changeset
+          end
+
+        # If organization_id is still nil but game_room_id present, try to load room
+        case {
+          Ash.Changeset.get_attribute(changeset, :organization_id),
+          Ash.Changeset.get_attribute(changeset, :game_room_id)
+        } do
+          {nil, room_id} when not is_nil(room_id) ->
+            case Ash.get(Flashwars.Games.GameRoom, room_id, authorize?: false) do
+              {:ok, room} ->
+                Ash.Changeset.change_attribute(changeset, :organization_id, room.organization_id)
+
+              _ ->
+                changeset
+            end
+
+          _ ->
+            changeset
+        end
+      end
+
+      validate present(:organization_id)
     end
   end
 
@@ -36,12 +89,17 @@ defmodule Flashwars.Games.GameSubmission do
     end
 
     policy action_type(:create) do
-      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
+      authorize_if {Flashwars.Policies.OrgMemberViaRoundCreate, []}
     end
 
     # Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    # Participants can read all submissions in their game room
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.GameParticipantViaRoomRead, []}
     end
   end
 
