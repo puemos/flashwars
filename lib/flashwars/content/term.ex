@@ -44,6 +44,11 @@ defmodule Flashwars.Content.Term do
       filter expr(study_set_id == ^arg(:study_set_id))
       prepare build(sort: [position: :asc])
     end
+
+    read :with_link_token do
+      argument :token, :string, allow_nil?: false
+      filter expr(study_set.privacy == :link_only and study_set.link_token == ^arg(:token))
+    end
   end
 
   policies do
@@ -71,6 +76,10 @@ defmodule Flashwars.Content.Term do
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.PublicViaStudySetRead, []}
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    policy action(:with_link_token) do
+      authorize_if always()
     end
   end
 
