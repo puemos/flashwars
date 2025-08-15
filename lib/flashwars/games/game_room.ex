@@ -14,7 +14,7 @@ defmodule Flashwars.Games.GameRoom do
     defaults [:read]
 
     create :create do
-      accept [:type, :config, :rating_scope, :organization_id]
+      accept [:type, :config, :rating_scope, :organization_id, :privacy]
       argument :study_set_id, :uuid, allow_nil?: false
       change relate_actor(:host)
       change set_attribute(:study_set_id, arg(:study_set_id))
@@ -53,7 +53,10 @@ defmodule Flashwars.Games.GameRoom do
       validate present(:organization_id)
     end
 
-    # read :with_link_token is defined when DB supports link-sharing
+    read :with_link_token do
+      argument :token, :string, allow_nil?: false
+      filter expr(privacy == :link_only and link_token == ^arg(:token))
+    end
 
     update :start_game do
       accept []
@@ -104,6 +107,9 @@ defmodule Flashwars.Games.GameRoom do
     end
 
     # Link-token based read is allowed when enabled
+    policy action(:with_link_token) do
+      authorize_if always()
+    end
   end
 
   attributes do
@@ -118,6 +124,12 @@ defmodule Flashwars.Games.GameRoom do
 
     attribute :config, :map, default: %{}
     attribute :rating_scope, :string
+
+    attribute :privacy, :atom,
+      constraints: [one_of: [:private, :link_only, :public]],
+      default: :private
+
+    attribute :link_token, :string
     attribute :organization_id, :uuid
 
     attribute :started_at, :utc_datetime
