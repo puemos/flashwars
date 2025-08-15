@@ -2,288 +2,227 @@ defmodule Flashwars.Learning.Engine do
   @moduledoc """
   Item generation logic for learning/assessment flows.
 
-  Games and other modes should call into this module to generate the
-  next item/question instead of baking logic into their layers.
+  This module provides functions for generating various types of learning and assessment items
+  for study sets. It handles multiple question types including:
+
+  - Multiple choice questions
+  - True/false questions
+  - Free text responses
+  - Matching exercises
+
+  The generated items are used by games and other learning modes. All item generation should
+  go through this module rather than implementing generation logic directly in game layers.
+
+  Key features:
+  - Smart scheduling based on user learning progress
+  - Configurable difficulty and question types
+  - Seeded random generation for reproducible sequences
+  - Telemetry for monitoring item generation performance
   """
 
   require Ash.Query
   require Logger
 
+  alias Flashwars.Content.Term
+  alias Flashwars.Learning.Scheduler
+
   @telemetry_prefix [:flashwars, :learning]
+  @default_matching_pairs 4
+  @default_learn_size 10
+  @default_test_size 20
+  @default_queue_multiplier 4
+
+  @type user :: %{id: any()}
+  @type study_set_id :: String.t()
+  @type term_id :: String.t()
 
   @type item :: %{
           kind: String.t(),
           prompt: String.t(),
           choices: [String.t()],
           answer_index: non_neg_integer(),
-          term_id: String.t() | nil
+          term_id: term_id() | nil
         }
 
-  defp maybe_seed(opts) do
-    case Keyword.get(opts, :seed) do
-      nil -> :ok
-      seed when is_integer(seed) -> :rand.seed(:exsplus, {seed, seed, seed})
-    end
-  end
+  @type flashcard :: %{
+          kind: String.t(),
+          front: String.t(),
+          back: String.t(),
+          term_id: term_id() | nil
+        }
 
-  @spec generate_item(String.t(), keyword()) :: item
+  @type generation_opts :: [
+          seed: integer() | nil,
+          exclude_term_ids: [term_id()],
+          size: pos_integer(),
+          types: [atom()],
+          pair_count: pos_integer(),
+          smart: boolean(),
+          order: :smart | :alphabetical | :position
+        ]
+
+  # Public API
+
+  @doc """
+  Generates a single multiple choice question from a study set.
+
+  ## Parameters
+  - `study_set_id` - ID of the study set to generate from
+  - `opts` - Keyword list of options
+
+  ## Options
+  - `:exclude_term_ids` - List of term IDs to exclude
+  - `:seed` - Integer seed for random generation
+
+  ## Returns
+  Map with:
+  - `:kind` - "multiple_choice"
+  - `:prompt` - Question text
+  - `:choices` - List of 4 possible answers
+  - `:answer_index` - Index of correct answer (0-3)
+  - `:term_id` - ID of source term
+  """
+  @spec generate_item(study_set_id(), generation_opts()) :: item()
   def generate_item(study_set_id, opts \\ []) when is_binary(study_set_id) do
-    maybe_seed(opts)
-    prev_term_ids = Keyword.get(opts, :exclude_term_ids, []) |> MapSet.new()
+    with_seeded_random(opts, fn ->
+      exclude_ids = get_exclude_set(opts)
+      terms = fetch_study_set_terms(study_set_id)
 
-    terms =
-      Flashwars.Content.Term
-      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-      |> Ash.read!(authorize?: false)
-
-    {prompt, choices, answer_idx, term_id} =
-      case terms do
-        [] ->
-          {"No terms in study set", ["—", "—", "—", "—"], 0, nil}
-
-        [_ | _] ->
-          build_mcq_from_terms(terms, prev_term_ids)
-      end
-
-    %{
-      kind: "multiple_choice",
-      prompt: prompt,
-      choices: choices,
-      answer_index: answer_idx,
-      term_id: term_id
-    }
+      build_multiple_choice_item(terms, exclude_ids)
+    end)
   end
 
   @doc """
   Generate a learn-mode item for a specific user, picking the next due or unseen term.
 
-  Falls back to generic term picking when no CardState exists.
+  Uses the spaced repetition scheduler to select terms that are due for review or have not yet
+  been seen by the user. Generates a multiple choice question using that term.
+
+  ## Parameters
+  - `user` - User map with :id field
+  - `study_set_id` - ID of study set to generate from
+  - `opts` - Keyword list of options (see `generate_item/2`)
+
+  Falls back to generic term picking via `generate_item/2` when no CardState exists for the user.
   """
-  @spec generate_item_for_user(%{id: any}, String.t(), keyword) :: item
+  @spec generate_item_for_user(user(), study_set_id(), generation_opts()) :: item()
   def generate_item_for_user(user, study_set_id, opts \\ []) do
-    maybe_seed(opts)
-    exclude = Keyword.get(opts, :exclude_term_ids, []) |> MapSet.new()
+    with_seeded_random(opts, fn ->
+      exclude_ids = get_exclude_set(opts)
 
-    queue = Flashwars.Learning.Scheduler.build_daily_queue(user, study_set_id, 10)
+      case select_scheduled_term(user, study_set_id, exclude_ids) do
+        {:ok, term} ->
+          terms = fetch_study_set_terms(study_set_id)
+          build_targeted_mcq(term, terms)
 
-    term =
-      case Enum.find(queue, fn cs -> not MapSet.member?(exclude, cs.term_id) end) do
-        %{} = cs -> Ash.get!(Flashwars.Content.Term, cs.term_id, authorize?: false)
-        nil -> nil
+        :no_term_available ->
+          generate_item(study_set_id, opts)
       end
-
-    if is_nil(term) do
-      generate_item(study_set_id, opts)
-    else
-      # Build MCQ using chosen term as target
-      terms =
-        Flashwars.Content.Term
-        |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-        |> Ash.read!(authorize?: false)
-
-      correct_def = term.definition
-      other_defs = terms |> Enum.reject(&(&1.id == term.id)) |> Enum.map(& &1.definition)
-
-      distractors_from_terms =
-        other_defs
-        |> Enum.uniq()
-        |> Enum.shuffle()
-        |> Enum.take(3)
-
-      needed = 3 - length(distractors_from_terms)
-
-      more_distractors =
-        if needed > 0 do
-          (term.distractors || [])
-          |> Enum.reject(&(&1 == correct_def))
-          |> Enum.uniq()
-          |> Enum.shuffle()
-          |> Enum.take(needed)
-        else
-          []
-        end
-
-      options =
-        [correct_def | distractors_from_terms ++ more_distractors]
-        |> Enum.uniq()
-        |> Enum.shuffle()
-        |> pad_to_four(correct_def)
-
-      answer_idx = Enum.find_index(options, &(&1 == correct_def)) || 0
-
-      %{
-        kind: "multiple_choice",
-        prompt: term.term,
-        choices: options,
-        answer_index: answer_idx,
-        term_id: term.id
-      }
-    end
+    end)
   end
 
   @doc """
   Flashcards mode: generate the next card for a user.
 
-  Options:
-  - :order – one of :smart | :alphabetical | :position (default :smart)
-  - :smart – boolean to enable scheduler based ordering (default true)
-  - :exclude_term_ids – list of term ids to skip
-  Returns a map with kind: "flashcard", front, back, term_id
+  Generates a flashcard item using term/definition pairs. Can use different ordering strategies
+  including spaced repetition scheduling.
+
+  ## Parameters
+  - `user` - User map with :id field
+  - `study_set_id` - ID of study set
+  - `opts` - Keyword list of options
+
+  ## Options
+  - `:order` - One of:
+    - `:smart` - Use spaced repetition scheduler (default)
+    - `:alphabetical` - Sort by term text
+    - `:position` - Use original term order
+  - `:smart` - Boolean to enable scheduler based ordering (default true)
+  - `:exclude_term_ids` - List of term IDs to skip
+
+  ## Returns
+  Map with:
+  - `:kind` - "flashcard"
+  - `:front` - Term text
+  - `:back` - Definition text
+  - `:term_id` - Source term ID
   """
-  @spec generate_flashcard(%{id: any}, String.t(), keyword) :: map
+  @spec generate_flashcard(user(), study_set_id(), generation_opts()) :: flashcard()
   def generate_flashcard(user, study_set_id, opts \\ []) do
-    maybe_seed(opts)
-    start = System.monotonic_time()
-    exclude = Keyword.get(opts, :exclude_term_ids, []) |> MapSet.new()
-    smart? = Keyword.get(opts, :smart, true)
-    order = Keyword.get(opts, :order, :smart)
-    order = if order == :smart and not smart?, do: :alphabetical, else: order
-    exclude_list = MapSet.to_list(exclude)
-
-    term =
-      case order do
-        :smart ->
-          queue = Flashwars.Learning.Scheduler.build_daily_queue(user, study_set_id, 20)
-
-          case Enum.find(queue, fn
-                 %{term_id: tid} -> not MapSet.member?(exclude, tid)
-                 %Flashwars.Content.Term{id: id} -> not MapSet.member?(exclude, id)
-                 _ -> false
-               end) do
-            %{term_id: tid} -> Ash.get!(Flashwars.Content.Term, tid, authorize?: false)
-            %Flashwars.Content.Term{} = term -> term
-            _ -> nil
-          end
-
-        :alphabetical ->
-          Flashwars.Content.Term
-          |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
-          |> Ash.Query.filter(id not in ^exclude_list)
-          |> Ash.Query.sort(term: :asc)
-          |> Ash.Query.limit(1)
-          |> Ash.read!(actor: user)
-          |> List.first()
-
-        :position ->
-          Flashwars.Content.Term
-          |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
-          |> Ash.Query.filter(id not in ^exclude_list)
-          |> Ash.Query.sort(position: :asc)
-          |> Ash.Query.limit(1)
-          |> Ash.read!(actor: user)
-          |> List.first()
-      end
+    start_time = System.monotonic_time()
 
     result =
-      case term do
-        nil ->
-          Logger.error("no term for flashcard", study_set_id: study_set_id)
+      with_seeded_random(opts, fn ->
+        exclude_ids = get_exclude_set(opts)
+        order = determine_flashcard_order(opts)
 
-          %{
-            kind: "flashcard",
-            front: "No terms",
-            back: "",
-            term_id: nil
-          }
+        case select_flashcard_term(user, study_set_id, exclude_ids, order) do
+          {:ok, term} ->
+            %{
+              kind: "flashcard",
+              front: term.term,
+              back: term.definition,
+              term_id: term.id
+            }
 
-        t ->
-          %{
-            kind: "flashcard",
-            front: t.term,
-            back: t.definition,
-            term_id: t.id
-          }
-      end
+          :no_term_available ->
+            Logger.error("No term available for flashcard", study_set_id: study_set_id)
 
-    duration = System.monotonic_time() - start
+            %{
+              kind: "flashcard",
+              front: "No terms",
+              back: "",
+              term_id: nil
+            }
+        end
+      end)
 
-    :telemetry.execute(@telemetry_prefix ++ [:flashcard], %{duration: duration, count: 1}, %{
-      mode: :flashcards,
-      user_present: true
-    })
-
+    emit_telemetry(:flashcard, start_time, 1, %{mode: :flashcards, user_present: true})
     result
   end
 
   @doc """
   Learn mode: generate a round of items.
 
-  Options:
-  - :size – number of items (default 10). Matching consumes multiple terms.
-  - :types – list of types: [:multiple_choice, :true_false, :free_text, :matching]
-  - :pair_count – for :matching, number of pairs (default 4)
-  - :smart – enable scheduler driven selection (default true)
-  - :exclude_term_ids – terms to avoid in this round
+  Generates a sequence of mixed question types for a learning session. Can use spaced
+  repetition scheduling to prioritize terms that are due for review.
+
+  ## Parameters
+  - `user` - User map with :id field
+  - `study_set_id` - ID of study set
+  - `opts` - Keyword list of options
+
+  ## Options
+  - `:size` - Number of items (default 10). Note: matching consumes multiple terms
+  - `:types` - List of allowed types:
+    - `:multiple_choice` - Multiple choice questions
+    - `:true_false` - True/false questions
+    - `:free_text` - Free text response
+    - `:matching` - Term/definition matching groups
+  - `:pair_count` - For :matching type, number of pairs to match (default 4)
+  - `:smart` - Enable scheduler driven selection (default true)
+  - `:exclude_term_ids` - Terms to avoid in this round
   """
-  @spec generate_learn_round(%{id: any}, String.t(), keyword) :: [map]
+  @spec generate_learn_round(user(), study_set_id(), generation_opts()) :: [map()]
   def generate_learn_round(user, study_set_id, opts \\ []) do
-    maybe_seed(opts)
-    start = System.monotonic_time()
-    size = Keyword.get(opts, :size, 10)
-    types = Keyword.get(opts, :types, [:multiple_choice, :true_false, :free_text, :matching])
-    pair_count = Keyword.get(opts, :pair_count, 4)
-    smart? = Keyword.get(opts, :smart, true)
-    exclude = Keyword.get(opts, :exclude_term_ids, []) |> MapSet.new()
-    exclude_list = MapSet.to_list(exclude)
+    start_time = System.monotonic_time()
 
-    queue_states =
-      if smart?,
-        do: Flashwars.Learning.Scheduler.build_daily_queue(user, study_set_id, size * 4),
-        else: []
+    items =
+      with_seeded_random(opts, fn ->
+        config = parse_learn_round_config(opts)
+        terms = get_prioritized_terms(user, study_set_id, config)
 
-    all_terms =
-      Flashwars.Content.Term
-      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
-      |> Ash.Query.filter(id not in ^exclude_list)
-      |> Ash.read!(actor: user)
-      |> Map.new(&{&1.id, &1})
-
-    candidates =
-      Enum.flat_map(queue_states, fn
-        %{term_id: tid} ->
-          case Map.fetch(all_terms, tid) do
-            {:ok, t} -> [t]
-            :error -> []
-          end
-
-        %Flashwars.Content.Term{} = t ->
-          [t]
-
-        _ ->
-          []
+        generate_mixed_items(terms, config)
       end)
 
-    pool =
-      (candidates ++ Map.values(all_terms))
-      |> Enum.uniq_by(& &1.id)
-
-    {items, _used} =
-      build_mixed_items(pool, MapSet.new(), size, types, pair_count, Map.values(all_terms))
-
-    count = length(items)
-
-    cond do
-      count == 0 ->
-        Logger.error("no items for learn round", study_set_id: study_set_id, requested: size)
-
-      count < size ->
-        Logger.warning("undersupplied learn round",
-          study_set_id: study_set_id,
-          requested: size,
-          returned: count
-        )
-
-      true ->
-        :ok
-    end
-
-    duration = System.monotonic_time() - start
-
-    :telemetry.execute(
-      @telemetry_prefix ++ [:learn_round],
-      %{duration: duration, count: count},
-      %{mode: :learn, user_present: true}
+    log_generation_result(
+      "learn round",
+      study_set_id,
+      opts[:size] || @default_learn_size,
+      length(items)
     )
+
+    emit_telemetry(:learn_round, start_time, length(items), %{mode: :learn, user_present: true})
 
     items
   end
@@ -291,78 +230,37 @@ defmodule Flashwars.Learning.Engine do
   @doc """
   Test mode: generate an N-length test of mixed question types.
 
-  Options:
-  - :size – number of items (required)
-  - :types – list of allowed types
-  - :pair_count – pairs in matching
-  - :smart – enable scheduler priority when user present (default true)
-  - :exclude_term_ids – terms to avoid
-  If `user` is provided and `smart` is true, prioritizes due/unseen via the scheduler.
+  Generates a sequence of mixed question types suitable for assessment. Can optionally
+  use spaced repetition scheduling when a user is present.
+
+  ## Parameters
+  - `user_or_nil` - Optional user map with :id field
+  - `study_set_id` - ID of study set
+  - `opts` - Keyword list of options
+
+  ## Options
+  - `:size` - Number of items (required)
+  - `:types` - List of allowed types (see generate_learn_round/3)
+  - `:pair_count` - For matching type, number of pairs to match
+  - `:smart` - Enable scheduler priority when user present (default true)
+  - `:exclude_term_ids` - Terms to avoid
   """
-  @spec generate_test(%{id: any} | nil, String.t(), keyword) :: [map]
+  @spec generate_test(user() | nil, study_set_id(), generation_opts()) :: [map()]
   def generate_test(user_or_nil, study_set_id, opts) do
-    maybe_seed(opts)
-    start = System.monotonic_time()
-    size = Keyword.get(opts, :size, 20)
-    types = Keyword.get(opts, :types, [:multiple_choice, :true_false, :free_text, :matching])
-    pair_count = Keyword.get(opts, :pair_count, 4)
-    smart? = Keyword.get(opts, :smart, true)
-    exclude = Keyword.get(opts, :exclude_term_ids, []) |> MapSet.new()
-    exclude_list = MapSet.to_list(exclude)
+    start_time = System.monotonic_time()
 
-    all_terms =
-      Flashwars.Content.Term
-      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-      |> Ash.Query.filter(id not in ^exclude_list)
-      |> Ash.read!(authorize?: false)
+    items =
+      with_seeded_random(opts, fn ->
+        config = parse_test_config(opts)
+        terms = get_test_terms(user_or_nil, study_set_id, config)
 
-    pool =
-      case {user_or_nil, smart?} do
-        {nil, _} ->
-          all_terms
+        generate_mixed_items(terms, config)
+      end)
 
-        {user, true} ->
-          states = Flashwars.Learning.Scheduler.build_daily_queue(user, study_set_id, size * 4)
+    size = opts[:size] || @default_test_size
+    log_generation_result("test", study_set_id, size, length(items), user_or_nil)
 
-          pri =
-            Enum.map(states, fn
-              %{term_id: tid} -> Enum.find(all_terms, &(&1.id == tid))
-              %Flashwars.Content.Term{id: id} -> Enum.find(all_terms, &(&1.id == id))
-              _ -> nil
-            end)
-            |> Enum.reject(&is_nil/1)
-
-          Enum.uniq_by(pri ++ all_terms, & &1.id)
-
-        {_user, false} ->
-          all_terms
-      end
-
-    {items, _used} = build_mixed_items(pool, MapSet.new(), size, types, pair_count, all_terms)
-    count = length(items)
-
-    cond do
-      count == 0 ->
-        Logger.error("no items for test",
-          study_set_id: study_set_id,
-          requested: size,
-          user?: not is_nil(user_or_nil)
-        )
-
-      count < size ->
-        Logger.warning("undersupplied test",
-          study_set_id: study_set_id,
-          requested: size,
-          returned: count
-        )
-
-      true ->
-        :ok
-    end
-
-    duration = System.monotonic_time() - start
-
-    :telemetry.execute(@telemetry_prefix ++ [:test], %{duration: duration, count: count}, %{
+    emit_telemetry(:test, start_time, length(items), %{
       mode: :test,
       user_present: not is_nil(user_or_nil)
     })
@@ -370,226 +268,511 @@ defmodule Flashwars.Learning.Engine do
     items
   end
 
-  defp pad_to_four(options, correct) do
-    opts =
-      case length(options) do
-        4 ->
-          options
+  # Private functions
 
-        n when n < 4 ->
-          pads = 1..(4 - n) |> Enum.map(fn i -> "Not #{correct} (#{i})" end)
-          options ++ pads
-
-        _ ->
-          Enum.take(options, 4)
-      end
-
-    # ensure shuffle mixes in pads
-    Enum.shuffle(opts)
+  defp with_seeded_random(opts, fun) do
+    maybe_seed_random(opts)
+    fun.()
   end
 
-  defp build_mcq_from_terms(terms, prev_term_ids) do
-    all_terms = Enum.shuffle(terms)
-
-    candidate_terms =
-      all_terms
-      |> Enum.reject(&MapSet.member?(prev_term_ids, &1.id))
-
-    pick_from = if candidate_terms == [], do: all_terms, else: candidate_terms
-    target = Enum.random(pick_from)
-
-    correct_def = target.definition
-
-    other_defs =
-      terms
-      |> Enum.reject(&(&1.id == target.id))
-      |> Enum.map(& &1.definition)
-
-    distractors_from_terms =
-      other_defs
-      |> Enum.uniq()
-      |> Enum.shuffle()
-      |> Enum.take(3)
-
-    needed = 3 - length(distractors_from_terms)
-
-    more_distractors =
-      if needed > 0 do
-        (target.distractors || [])
-        |> Enum.reject(&(&1 == correct_def))
-        |> Enum.uniq()
-        |> Enum.shuffle()
-        |> Enum.take(needed)
-      else
-        []
-      end
-
-    final_distractors =
-      (distractors_from_terms ++ more_distractors)
-      |> Enum.uniq()
-      |> case do
-        list when length(list) >= 3 ->
-          Enum.take(list, 3)
-
-        list ->
-          pad_needed = 3 - length(list)
-          pads = 1..pad_needed |> Enum.map(fn i -> "Not #{correct_def} (#{i})" end)
-          list ++ pads
-      end
-
-    options = [correct_def | final_distractors] |> Enum.shuffle()
-    answer_idx = Enum.find_index(options, &(&1 == correct_def)) || 0
-
-    {target.term, options, answer_idx, target.id}
-  end
-
-  # Internal: build a batch of mixed-type items without reusing terms (except matching groups).
-  defp build_mixed_items(pool, used_ids, remaining, types, pair_count, all_terms) do
-    if remaining <= 0 or pool == [] do
-      {[], used_ids}
-    else
-      {next_item, newly_used} =
-        case pick_type(types) do
-          :matching ->
-            # Need multiple unused terms; if insufficient, fall back to MCQ
-            available = Enum.reject(pool, &MapSet.member?(used_ids, &1.id))
-            group = Enum.take(available, pair_count)
-
-            if length(group) < max(3, div(pair_count, 2)) do
-              build_mcq_item(pool, used_ids, all_terms)
-            else
-              item = build_matching(group)
-              used = Enum.reduce(group, used_ids, fn t, acc -> MapSet.put(acc, t.id) end)
-              {item, used}
-            end
-
-          :true_false ->
-            build_true_false_item(pool, used_ids, all_terms)
-
-          :free_text ->
-            build_free_text_item(pool, used_ids)
-
-          _ ->
-            build_mcq_item(pool, used_ids, all_terms)
-        end
-
-      {rest, final_used} =
-        build_mixed_items(pool, newly_used, remaining - 1, types, pair_count, all_terms)
-
-      {[next_item | rest], final_used}
+  defp maybe_seed_random(opts) do
+    case Keyword.get(opts, :seed) do
+      nil -> :ok
+      seed when is_integer(seed) -> :rand.seed(:exsplus, {seed, seed, seed})
     end
   end
 
-  defp pick_type(types) when is_list(types) and types != [] do
-    Enum.random(types)
+  defp get_exclude_set(opts) do
+    opts
+    |> Keyword.get(:exclude_term_ids, [])
+    |> MapSet.new()
   end
 
-  defp build_mcq_item(pool, used_ids, all_terms) do
-    candidate = Enum.find(pool, &(!MapSet.member?(used_ids, &1.id))) || List.first(pool)
+  defp fetch_study_set_terms(study_set_id) do
+    Term
+    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
+    |> Ash.read!(authorize?: false)
+  end
 
-    other_defs =
-      all_terms
-      |> Enum.reject(&(&1.id == candidate.id))
-      |> Enum.map(& &1.definition)
+  defp fetch_study_set_terms(study_set_id, actor) do
+    Term
+    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: actor)
+    |> Ash.read!(actor: actor)
+  end
 
-    distractors_from_terms =
-      other_defs
+  defp select_scheduled_term(user, study_set_id, exclude_ids) do
+    user
+    |> Scheduler.build_daily_queue(study_set_id, @default_learn_size)
+    |> Enum.find(&(not MapSet.member?(exclude_ids, &1.term_id)))
+    |> case do
+      %{term_id: term_id} ->
+        term = Ash.get!(Term, term_id, authorize?: false)
+        {:ok, term}
+
+      nil ->
+        :no_term_available
+    end
+  end
+
+  defp build_multiple_choice_item(terms, exclude_ids) do
+    case terms do
+      [] ->
+        build_empty_mcq()
+
+      terms when is_list(terms) ->
+        {prompt, choices, answer_idx, term_id} = build_mcq_from_terms(terms, exclude_ids)
+
+        %{
+          kind: "multiple_choice",
+          prompt: prompt,
+          choices: choices,
+          answer_index: answer_idx,
+          term_id: term_id
+        }
+    end
+  end
+
+  defp build_empty_mcq do
+    %{
+      kind: "multiple_choice",
+      prompt: "No terms in study set",
+      choices: ["—", "—", "—", "—"],
+      answer_index: 0,
+      term_id: nil
+    }
+  end
+
+  defp build_targeted_mcq(target_term, all_terms) do
+    correct_def = target_term.definition
+    other_defs = extract_other_definitions(all_terms, target_term.id)
+
+    distractors = build_distractors(other_defs, target_term.distractors, correct_def, 3)
+    choices = build_shuffled_choices(correct_def, distractors)
+    answer_index = find_answer_index(choices, correct_def)
+
+    %{
+      kind: "multiple_choice",
+      prompt: target_term.term,
+      choices: choices,
+      answer_index: answer_index,
+      term_id: target_term.id
+    }
+  end
+
+  defp extract_other_definitions(terms, exclude_id) do
+    terms
+    |> Enum.reject(&(&1.id == exclude_id))
+    |> Enum.map(& &1.definition)
+  end
+
+  defp build_distractors(other_definitions, term_distractors, correct_def, needed_count) do
+    from_terms =
+      other_definitions
       |> Enum.uniq()
       |> Enum.shuffle()
-      |> Enum.take(3)
+      |> Enum.take(needed_count)
 
-    needed = 3 - length(distractors_from_terms)
+    remaining_needed = needed_count - length(from_terms)
 
-    more =
-      if needed > 0 do
-        (candidate.distractors || [])
-        |> Enum.reject(&(&1 == candidate.definition))
+    from_metadata =
+      if remaining_needed > 0 do
+        (term_distractors || [])
+        |> Enum.reject(&(&1 == correct_def))
         |> Enum.uniq()
         |> Enum.shuffle()
-        |> Enum.take(needed)
+        |> Enum.take(remaining_needed)
       else
         []
       end
 
-    options =
-      [candidate.definition | distractors_from_terms ++ more] |> Enum.uniq() |> Enum.shuffle()
+    from_terms ++ from_metadata
+  end
 
-    options = pad_to_four(options, candidate.definition)
-    answer_idx = Enum.find_index(options, &(&1 == candidate.definition)) || 0
+  defp build_shuffled_choices(correct_answer, distractors) do
+    [correct_answer | distractors]
+    |> Enum.uniq()
+    |> pad_choices_to_four(correct_answer)
+    |> Enum.shuffle()
+  end
+
+  defp pad_choices_to_four(choices, correct_answer) do
+    case length(choices) do
+      4 ->
+        choices
+
+      n when n < 4 ->
+        padding = generate_padding(4 - n, correct_answer)
+        choices ++ padding
+
+      _ ->
+        Enum.take(choices, 4)
+    end
+  end
+
+  defp generate_padding(count, correct_answer) do
+    1..count
+    |> Enum.map(fn i -> "Not #{correct_answer} (#{i})" end)
+  end
+
+  defp find_answer_index(choices, correct_answer) do
+    Enum.find_index(choices, &(&1 == correct_answer)) || 0
+  end
+
+  defp build_mcq_from_terms(terms, exclude_ids) do
+    shuffled_terms = Enum.shuffle(terms)
+    available_terms = Enum.reject(shuffled_terms, &MapSet.member?(exclude_ids, &1.id))
+
+    target = select_target_term(available_terms, shuffled_terms)
+    correct_def = target.definition
+    other_defs = extract_other_definitions(terms, target.id)
+
+    distractors = build_distractors(other_defs, target.distractors, correct_def, 3)
+    final_distractors = ensure_sufficient_distractors(distractors, correct_def)
+
+    choices = [correct_def | final_distractors] |> Enum.shuffle()
+    answer_index = find_answer_index(choices, correct_def)
+
+    {target.term, choices, answer_index, target.id}
+  end
+
+  defp select_target_term([], fallback_terms), do: Enum.random(fallback_terms)
+  defp select_target_term(available_terms, _), do: Enum.random(available_terms)
+
+  defp ensure_sufficient_distractors(distractors, correct_def) do
+    case length(distractors) do
+      n when n >= 3 ->
+        Enum.take(distractors, 3)
+
+      n ->
+        padding = generate_padding(3 - n, correct_def)
+        distractors ++ padding
+    end
+  end
+
+  defp determine_flashcard_order(opts) do
+    smart? = Keyword.get(opts, :smart, true)
+    order = Keyword.get(opts, :order, :smart)
+
+    if order == :smart and not smart?, do: :alphabetical, else: order
+  end
+
+  defp select_flashcard_term(user, study_set_id, exclude_ids, order) do
+    exclude_list = MapSet.to_list(exclude_ids)
+
+    case order do
+      :smart ->
+        select_smart_flashcard_term(user, study_set_id, exclude_ids)
+
+      :alphabetical ->
+        query_flashcard_term(study_set_id, user, exclude_list, term: :asc)
+
+      :position ->
+        query_flashcard_term(study_set_id, user, exclude_list, position: :asc)
+    end
+  end
+
+  defp select_smart_flashcard_term(user, study_set_id, exclude_ids) do
+    user
+    |> Scheduler.build_daily_queue(study_set_id, 20)
+    |> Enum.find(&(not MapSet.member?(exclude_ids, extract_term_id(&1))))
+    |> case do
+      %{term_id: term_id} ->
+        term = Ash.get!(Term, term_id, authorize?: false)
+        {:ok, term}
+
+      %Term{} = term ->
+        {:ok, term}
+
+      nil ->
+        :no_term_available
+    end
+  end
+
+  defp extract_term_id(%{term_id: id}), do: id
+  defp extract_term_id(%Term{id: id}), do: id
+  defp extract_term_id(_), do: nil
+
+  defp query_flashcard_term(study_set_id, user, exclude_list, sort_order) do
+    case Term
+         |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
+         |> Ash.Query.filter(id not in ^exclude_list)
+         |> Ash.Query.sort(sort_order)
+         |> Ash.Query.limit(1)
+         |> Ash.read!(actor: user)
+         |> List.first() do
+      nil -> :no_term_available
+      term -> {:ok, term}
+    end
+  end
+
+  defp parse_learn_round_config(opts) do
+    %{
+      size: Keyword.get(opts, :size, @default_learn_size),
+      types: Keyword.get(opts, :types, [:multiple_choice, :true_false, :free_text, :matching]),
+      pair_count: Keyword.get(opts, :pair_count, @default_matching_pairs),
+      smart: Keyword.get(opts, :smart, true),
+      exclude_ids: get_exclude_set(opts)
+    }
+  end
+
+  defp parse_test_config(opts) do
+    %{
+      size: Keyword.get(opts, :size, @default_test_size),
+      types: Keyword.get(opts, :types, [:multiple_choice, :true_false, :free_text, :matching]),
+      pair_count: Keyword.get(opts, :pair_count, @default_matching_pairs),
+      smart: Keyword.get(opts, :smart, true),
+      exclude_ids: get_exclude_set(opts)
+    }
+  end
+
+  defp get_prioritized_terms(
+         user,
+         study_set_id,
+         %{smart: true, exclude_ids: exclude_ids} = config
+       ) do
+    queue_states =
+      Scheduler.build_daily_queue(user, study_set_id, config.size * @default_queue_multiplier)
+
+    all_terms = fetch_study_set_terms(study_set_id, user)
+
+    exclude_list = MapSet.to_list(exclude_ids)
+
+    filtered_terms =
+      all_terms
+      |> Enum.reject(&(&1.id in exclude_list))
+      |> Map.new(&{&1.id, &1})
+
+    candidates = extract_candidate_terms(queue_states, filtered_terms)
+
+    (candidates ++ Map.values(filtered_terms))
+    |> Enum.uniq_by(& &1.id)
+  end
+
+  defp get_prioritized_terms(_user, study_set_id, %{exclude_ids: exclude_ids}) do
+    exclude_list = MapSet.to_list(exclude_ids)
+
+    Term
+    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
+    |> Ash.Query.filter(id not in ^exclude_list)
+    |> Ash.read!(authorize?: false)
+  end
+
+  defp get_test_terms(nil, study_set_id, %{exclude_ids: exclude_ids}) do
+    exclude_list = MapSet.to_list(exclude_ids)
+
+    Term
+    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
+    |> Ash.Query.filter(id not in ^exclude_list)
+    |> Ash.read!(authorize?: false)
+  end
+
+  defp get_test_terms(_user, study_set_id, %{smart: false} = config) do
+    get_test_terms(nil, study_set_id, config)
+  end
+
+  defp get_test_terms(user, study_set_id, %{smart: true} = config) do
+    exclude_list = MapSet.to_list(config.exclude_ids)
+
+    all_terms =
+      Term
+      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
+      |> Ash.Query.filter(id not in ^exclude_list)
+      |> Ash.read!(authorize?: false)
+
+    queue_states =
+      Scheduler.build_daily_queue(user, study_set_id, config.size * @default_queue_multiplier)
+
+    prioritized = extract_candidate_terms(queue_states, Map.new(all_terms, &{&1.id, &1}))
+
+    Enum.uniq_by(prioritized ++ all_terms, & &1.id)
+  end
+
+  defp extract_candidate_terms(queue_states, terms_map) do
+    Enum.flat_map(queue_states, fn
+      %{term_id: term_id} ->
+        case Map.fetch(terms_map, term_id) do
+          {:ok, term} -> [term]
+          :error -> []
+        end
+
+      %Term{} = term ->
+        [term]
+
+      _ ->
+        []
+    end)
+  end
+
+  defp generate_mixed_items(terms, config) do
+    {items, _used_ids} = build_mixed_items(terms, MapSet.new(), config)
+    items
+  end
+
+  defp build_mixed_items(_terms, used_ids, %{size: 0}), do: {[], used_ids}
+  defp build_mixed_items([], used_ids, _config), do: {[], used_ids}
+
+  defp build_mixed_items(terms, used_ids, config) do
+    item_type = Enum.random(config.types)
+
+    {item, new_used_ids} =
+      case item_type do
+        :matching ->
+          build_matching_item_or_fallback(terms, used_ids, config)
+
+        :true_false ->
+          build_true_false_item(terms, used_ids)
+
+        :free_text ->
+          build_free_text_item(terms, used_ids)
+
+        _ ->
+          build_multiple_choice_item_from_pool(terms, used_ids)
+      end
+
+    {remaining_items, final_used_ids} =
+      build_mixed_items(terms, new_used_ids, %{config | size: config.size - 1})
+
+    {[item | remaining_items], final_used_ids}
+  end
+
+  defp build_matching_item_or_fallback(terms, used_ids, %{pair_count: pair_count}) do
+    available_terms = Enum.reject(terms, &MapSet.member?(used_ids, &1.id))
+    selected_terms = Enum.take(available_terms, pair_count)
+
+    min_required = max(3, div(pair_count, 2))
+
+    if length(selected_terms) < min_required do
+      build_multiple_choice_item_from_pool(terms, used_ids)
+    else
+      item = build_matching_item(selected_terms)
+      new_used_ids = Enum.reduce(selected_terms, used_ids, &MapSet.put(&2, &1.id))
+      {item, new_used_ids}
+    end
+  end
+
+  defp build_multiple_choice_item_from_pool(terms, used_ids) do
+    target_term = select_unused_term(terms, used_ids)
+    other_definitions = extract_other_definitions(terms, target_term.id)
+
+    distractors =
+      build_distractors(other_definitions, target_term.distractors, target_term.definition, 3)
+
+    choices = build_shuffled_choices(target_term.definition, distractors)
+    answer_index = find_answer_index(choices, target_term.definition)
 
     item = %{
       kind: "multiple_choice",
-      prompt: candidate.term,
-      choices: options,
-      answer_index: answer_idx,
-      term_id: candidate.id
+      prompt: target_term.term,
+      choices: choices,
+      answer_index: answer_index,
+      term_id: target_term.id
     }
 
-    {item, MapSet.put(used_ids, candidate.id)}
+    {item, MapSet.put(used_ids, target_term.id)}
   end
 
-  defp build_true_false_item(pool, used_ids, all_terms) do
-    candidate = Enum.find(pool, &(!MapSet.member?(used_ids, &1.id))) || List.first(pool)
+  defp build_true_false_item(terms, used_ids) do
+    target_term = select_unused_term(terms, used_ids)
+    other_definitions = extract_other_definitions(terms, target_term.id)
 
-    # 50/50 chance to present correct or incorrect pairing
-    incorrect_defs =
-      all_terms
-      |> Enum.reject(&(&1.id == candidate.id))
-      |> Enum.map(& &1.definition)
+    show_correct? = Enum.random([true, false])
+    definition = select_definition_for_tf(target_term, other_definitions, show_correct?)
+    is_correct? = definition == target_term.definition
 
-    incorrect =
-      Enum.random(incorrect_defs ++ (candidate.distractors || []) ++ [candidate.definition])
-
-    show_correct = Enum.random([true, false])
-    definition = if show_correct, do: candidate.definition, else: incorrect
-    is_correct = definition == candidate.definition
-
-    choices = ["True", "False"]
-    answer_index = if is_correct, do: 0, else: 1
+    answer_index = if is_correct?, do: 0, else: 1
 
     item = %{
       kind: "true_false",
-      prompt: candidate.term <> " — matches definition?",
+      prompt: "#{target_term.term} — matches definition?",
       definition: definition,
-      choices: choices,
+      choices: ["True", "False"],
       answer_index: answer_index,
-      term_id: candidate.id
+      term_id: target_term.id
     }
 
-    {item, MapSet.put(used_ids, candidate.id)}
+    {item, MapSet.put(used_ids, target_term.id)}
   end
 
-  defp build_free_text_item(pool, used_ids) do
-    candidate = Enum.find(pool, &(!MapSet.member?(used_ids, &1.id))) || List.first(pool)
+  defp select_definition_for_tf(target_term, _other_definitions, true), do: target_term.definition
+
+  defp select_definition_for_tf(target_term, other_definitions, false) do
+    candidates = other_definitions ++ (target_term.distractors || [])
+    # fallback to correct if no alternatives
+    Enum.random(candidates ++ [target_term.definition])
+  end
+
+  defp build_free_text_item(terms, used_ids) do
+    target_term = select_unused_term(terms, used_ids)
 
     item = %{
       kind: "free_text",
-      prompt: candidate.term,
-      answer_text: candidate.definition,
-      term_id: candidate.id
+      prompt: target_term.term,
+      answer_text: target_term.definition,
+      term_id: target_term.id
     }
 
-    {item, MapSet.put(used_ids, candidate.id)}
+    {item, MapSet.put(used_ids, target_term.id)}
   end
 
-  defp build_matching(group) do
-    left = Enum.map(group, &%{term_id: &1.id, term: &1.term})
-    rights = group |> Enum.map(&%{definition: &1.definition, term_id: &1.id}) |> Enum.shuffle()
+  defp build_matching_item(terms) do
+    left_items = Enum.map(terms, &%{term_id: &1.id, term: &1.term})
 
-    # answer is index mapping: left[i] -> position in rights
-    answer =
-      left
-      |> Enum.with_index()
-      |> Enum.map(fn {%{term_id: tid}, i} ->
-        j = Enum.find_index(rights, &(&1.term_id == tid)) || i
-        %{left_index: i, right_index: j}
-      end)
+    right_items =
+      terms
+      |> Enum.map(&%{definition: &1.definition, term_id: &1.id})
+      |> Enum.shuffle()
+
+    answer_pairs = build_matching_answer_key(left_items, right_items)
 
     %{
       kind: "matching",
-      left: left,
-      right: Enum.map(rights, & &1.definition),
-      answer_pairs: answer
+      left: left_items,
+      right: Enum.map(right_items, & &1.definition),
+      answer_pairs: answer_pairs
     }
+  end
+
+  defp build_matching_answer_key(left_items, right_items) do
+    left_items
+    |> Enum.with_index()
+    |> Enum.map(fn {%{term_id: term_id}, left_index} ->
+      right_index = Enum.find_index(right_items, &(&1.term_id == term_id)) || left_index
+      %{left_index: left_index, right_index: right_index}
+    end)
+  end
+
+  defp select_unused_term(terms, used_ids) do
+    Enum.find(terms, &(not MapSet.member?(used_ids, &1.id))) || List.first(terms)
+  end
+
+  defp log_generation_result(type, study_set_id, requested, returned, user \\ nil) do
+    cond do
+      returned == 0 ->
+        Logger.error("No items generated for #{type}",
+          study_set_id: study_set_id,
+          requested: requested,
+          user_present: not is_nil(user)
+        )
+
+      returned < requested ->
+        Logger.warning("Undersupplied #{type}",
+          study_set_id: study_set_id,
+          requested: requested,
+          returned: returned
+        )
+
+      true ->
+        :ok
+    end
+  end
+
+  defp emit_telemetry(event_name, start_time, count, metadata) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      @telemetry_prefix ++ [event_name],
+      %{duration: duration, count: count},
+      metadata
+    )
   end
 end

@@ -44,8 +44,8 @@ defmodule Flashwars.Learning.ModeSeedTest do
           section_id: section.id,
           study_set_id: set.id,
           organization_id: org.id
-        }) ||
-          Ash.create()
+        })
+        |> Ash.create()
 
       assert %Ash.Error.Invalid{} = error
     end
