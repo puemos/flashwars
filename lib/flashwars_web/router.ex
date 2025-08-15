@@ -48,6 +48,16 @@ defmodule FlashwarsWeb.Router do
       #
       # If an authenticated user must *not* be present:
       # on_mount {FlashwarsWeb.LiveUserAuth, :live_no_user}
+
+      # Authenticated org-scoped study set flow
+      # Org selector and org home
+      live "/orgs", OrgSelectLive, :index
+      live "/orgs/:org_id", OrgHomeLive, :home
+
+      scope "/orgs/:org_id" do
+        live "/study_sets/new", StudySetLive.New, :new
+        live "/study_sets/:id/terms", StudySetLive.EditTerms, :terms
+      end
     end
   end
 

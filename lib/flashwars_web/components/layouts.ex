@@ -37,26 +37,34 @@ defmodule FlashwarsWeb.Layouts do
     ~H"""
     <header class="navbar px-4 sm:px-6 lg:px-8">
       <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
+        <a href={~p"/"} class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
+          <span class="text-sm font-semibold">Flashwars</span>
         </a>
       </div>
       <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
+        <ul class="menu menu-horizontal px-1 items-center gap-1">
           <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
+            <.link navigate={~p"/orgs"} class="btn btn-ghost">Organizations</.link>
           </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
+          <li :if={@current_scope && @current_scope[:org_id]}>
+            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Home</.link>
+          </li>
+          <li :if={@current_scope && @current_scope[:org_id]}>
+            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"} class="btn btn-ghost">
+              New Set
+            </.link>
           </li>
           <li>
             <.theme_toggle />
           </li>
           <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
+            <details class="dropdown dropdown-end">
+              <summary class="btn btn-ghost">Account</summary>
+              <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-52 p-2 shadow">
+                <li><a href={~p"/sign-out"}>Sign out</a></li>
+              </ul>
+            </details>
           </li>
         </ul>
       </div>

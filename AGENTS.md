@@ -1,5 +1,7 @@
 This is a web application written using the Phoenix web framework.
 
+Important: use `mix test --trace '>' test_nav.log '2>&1' '||' true '&&' sed -n '1,160p' test_nav.log '&&' rm -f test_nav.log` for testong so you can see the output
+
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues

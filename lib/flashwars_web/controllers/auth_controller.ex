@@ -3,7 +3,9 @@ defmodule FlashwarsWeb.AuthController do
   use AshAuthentication.Phoenix.Controller
 
   def success(conn, activity, user, _token) do
-    return_to = get_session(conn, :return_to) || ~p"/"
+    # Ensure a default organization and admin membership for new users
+    _ = Flashwars.Org.ensure_default_org_for(user)
+    target = FlashwarsWeb.AuthRedirects.path_for_user(user)
 
     message =
       case activity do
@@ -18,7 +20,7 @@ defmodule FlashwarsWeb.AuthController do
     # If your resource has a different name, update the assign name here (i.e :current_admin)
     |> assign(:current_user, user)
     |> put_flash(:info, message)
-    |> redirect(to: return_to)
+    |> redirect(to: target)
   end
 
   def failure(conn, activity, reason) do
