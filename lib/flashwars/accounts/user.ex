@@ -27,7 +27,7 @@ defmodule Flashwars.Accounts.User do
         registration_enabled? true
         require_interaction? true
 
-        sender Flashwars.Accounts.User.Senders.SendMagicLinkEmailImpl
+        sender Flashwars.Accounts.User.Senders.SendMagicLinkEmail
       end
 
       api_key :api_key do

@@ -10,6 +10,11 @@ defmodule FlashwarsWeb.AuthOverrides do
     set :root_class, "grid h-screen place-items-center bg-base-100"
   end
 
+  override AshAuthentication.Phoenix.MagicSignInLive do
+    set :root_class, "grid h-screen place-items-center bg-base-100"
+    set :magic_sign_in_id, "magic-sign-in"
+  end
+
   override AshAuthentication.Phoenix.Components.Reset do
     set :root_class, """
     flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:flex-none
@@ -70,6 +75,34 @@ defmodule FlashwarsWeb.AuthOverrides do
         "If this user exists in our database you will contacted with a sign-in link shortly."
 
     set :disable_button_text, "Requesting ..."
+  end
+
+  override AshAuthentication.Phoenix.Components.MagicLink.SignIn do
+    set :root_class, """
+    flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:flex-none
+    lg:px-20 xl:px-24 border rounded-md border-base-300 bg-base-200/30
+    """
+
+    set :show_banner, false
+    set :strategy_class, "mx-auto w-full max-w-sm lg:w-96"
+  end
+
+  override AshAuthentication.Phoenix.Components.MagicLink.Form do
+    set :root_class, nil
+    set :label_class, "mt-2 mb-4 text-2xl tracking-tight font-bold text-base-content"
+    set :form_class, nil
+    set :disable_button_text, "Requesting magic link..."
+  end
+
+  override AshAuthentication.Phoenix.Components.MagicLink.Input do
+    set :submit_class, """
+    inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm
+    font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-base-300
+    disabled:pointer-events-none disabled:opacity-50 border border-base-300 bg-base-200/50
+    shadow-sm hover:bg-base-200 hover:text-base-content h-9 px-4 py-2
+    """
+
+    set :submit_label, "Sign In"
   end
 
   override AshAuthentication.Phoenix.Components.Password do
