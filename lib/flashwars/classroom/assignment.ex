@@ -41,7 +41,7 @@ defmodule Flashwars.Classroom.Assignment do
     uuid_primary_key :id
 
     attribute :mode, :atom,
-      constraints: [one_of: [:flashcards, :learn, :test, :match, :game]],
+      constraints: [one_of: [:flashcards, :learn, :test, :game]],
       default: :test
 
     attribute :due_at, :utc_datetime

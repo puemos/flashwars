@@ -85,7 +85,7 @@ defmodule Flashwars.Learning.Session do
     uuid_primary_key :id
 
     attribute :mode, :atom,
-      constraints: [one_of: [:flashcards, :learn, :test, :match]],
+      constraints: [one_of: [:flashcards, :learn, :test]],
       allow_nil?: false
 
     attribute :state, :map, default: %{}
