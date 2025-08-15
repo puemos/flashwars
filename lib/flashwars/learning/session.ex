@@ -41,7 +41,7 @@ defmodule Flashwars.Learning.Session do
     end
 
     # Org admin can do everything under their org
-    policy action_type([:read, :create, :destroy]) do
+    policy action_type([:read, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
@@ -50,9 +50,9 @@ defmodule Flashwars.Learning.Session do
       authorize_if relates_to_actor_via(:user)
     end
 
-    # Anyone can create
+    # Org admins can create under their org
     policy action_type(:create) do
-      authorize_if always()
+      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     # Org members can read org resources

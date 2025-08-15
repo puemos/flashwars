@@ -21,7 +21,7 @@ defmodule Flashwars.Learning.AttemptItem do
     end
 
     # Org admin can do everything under their org
-    policy action_type([:read, :create, :update, :destroy]) do
+    policy action_type([:read, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
@@ -30,9 +30,9 @@ defmodule Flashwars.Learning.AttemptItem do
       authorize_if relates_to_actor_via([:attempt, :user])
     end
 
-    # Anyone can create an attempt item
+    # Org admins can create attempt items under their org
     policy action_type(:create) do
-      authorize_if always()
+      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     # Org members can read org resources

@@ -16,14 +16,16 @@ defmodule Flashwars.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Ecto.Adapters.SQL.Sandbox
+
   using do
     quote do
-      alias Flashwars.Repo
-
+      import Flashwars.DataCase
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import Flashwars.DataCase
+
+      alias Flashwars.Repo
     end
   end
 
@@ -36,8 +38,8 @@ defmodule Flashwars.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Flashwars.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    pid = Sandbox.start_owner!(Flashwars.Repo, shared: not tags[:async])
+    on_exit(fn -> Sandbox.stop_owner(pid) end)
   end
 
   @doc """

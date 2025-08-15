@@ -14,8 +14,7 @@ defmodule Flashwars.Org.OrgMembership do
     defaults [:read, :destroy]
 
     create :create do
-      accept [:role, :organization_id]
-      change relate_actor(:user)
+      accept [:role, :organization_id, :user_id]
     end
 
     update :set_role do
@@ -24,17 +23,29 @@ defmodule Flashwars.Org.OrgMembership do
   end
 
   policies do
-    policy always() do
-      forbid_if always()
+    # Site admin can do everything (bypass)
+    bypass actor_attribute_equals(:site_admin, true) do
+      authorize_if always()
     end
 
+    # Org admin can read, update, destroy
+    policy action_type([:read, :update, :destroy]) do
+      authorize_if {Flashwars.Policies.OrgAdminRead, []}
+    end
+
+    # Org members can read
+    policy action_type(:read) do
+      authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    # Org admins can create
+    policy action_type(:create) do
+      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
+    end
+
+    # Users can read their own memberships
     policy action_type(:read) do
       authorize_if relates_to_actor_via(:user)
-      authorize_if actor_attribute_equals(:site_admin, true)
-    end
-
-    policy action_type([:create, :update, :destroy]) do
-      authorize_if actor_attribute_equals(:site_admin, true)
     end
   end
 

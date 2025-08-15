@@ -28,7 +28,7 @@ defmodule Flashwars.Classroom.Enrollment do
       authorize_if always()
     end
 
-    policy action_type([:read, :create, :update, :destroy]) do
+    policy action_type([:read, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
@@ -37,7 +37,7 @@ defmodule Flashwars.Classroom.Enrollment do
     end
 
     policy action_type(:create) do
-      authorize_if always()
+      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     policy action_type(:read) do

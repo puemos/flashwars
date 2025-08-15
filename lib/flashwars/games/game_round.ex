@@ -33,7 +33,7 @@ defmodule Flashwars.Games.GameRound do
     end
 
     # Org admin can do everything under their org
-    policy action_type([:read, :create, :update, :destroy]) do
+    policy action_type([:read, :update, :destroy]) do
       authorize_if {Flashwars.Policies.OrgAdminRead, []}
     end
 
@@ -43,7 +43,7 @@ defmodule Flashwars.Games.GameRound do
     end
 
     policy action_type(:create) do
-      authorize_if always()
+      authorize_if {Flashwars.Policies.OrgAdminCreate, []}
     end
 
     # Org members can read org resources

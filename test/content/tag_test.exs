@@ -22,16 +22,6 @@ defmodule Flashwars.Content.TagTest do
         # Remove organization_id from generated input to avoid foreign key constraint issues
         input = Map.delete(input, :organization_id)
 
-        # Clean up any existing tags with the same name before creating
-        existing_tags =
-          Tag
-          |> Ash.Query.filter(name: input[:name])
-          |> Ash.read!(authorize?: false)
-
-        for tag <- existing_tags do
-          Ash.destroy!(tag, authorize?: false)
-        end
-
         tag = Content.create_tag!(input, actor: @admin)
         assert %Tag{} = tag
       end
