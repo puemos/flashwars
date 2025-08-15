@@ -7,6 +7,14 @@ defmodule Flashwars.Learning.SchedulerTest do
   alias Flashwars.Org.Organization
 
   describe "schedule_after_review + review logging" do
+    @doc """
+    Tests the learning scheduler's behavior for successful and failed review attempts.
+    This test verifies that:
+    - Successful reviews update card state with correct scheduling metadata
+    - Failed reviews trigger relearning steps with appropriate intervals
+    - Review attempts are properly logged with metadata like response time
+    - Card state is updated with next due dates based on performance
+    """
     test "success and failure update card state and log AttemptItem metadata" do
       org = Ash.Seed.seed!(Organization, %{name: "Org"})
       admin = Ash.Seed.seed!(User, %{email: "admin-sched@example.com"})
@@ -64,6 +72,12 @@ defmodule Flashwars.Learning.SchedulerTest do
   end
 
   describe "daily queue" do
+    @doc """
+    Tests the daily queue building functionality.
+    Verifies that when there are no due items, the queue includes unseen items
+    up to the requested limit. This ensures users always have content to review
+    even when starting fresh with a study set.
+    """
     test "includes unseen when no due items" do
       org = Ash.Seed.seed!(Organization, %{name: "Org2"})
       admin = Ash.Seed.seed!(User, %{email: "admin-q@example.com"})

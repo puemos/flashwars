@@ -9,6 +9,10 @@ defmodule Flashwars.Learning.ModeSeedTest do
   describe "mode constraints" do
     setup [:build_set]
 
+    @doc """
+    Verifies that attempting to create a session with match mode results in an error.
+    Match mode is not supported for individual study sessions.
+    """
     test "session rejects match mode", %{user: user, set: set} do
       {:error, error} =
         Session
@@ -22,6 +26,11 @@ defmodule Flashwars.Learning.ModeSeedTest do
       assert %Ash.Error.Invalid{} = error
     end
 
+    @doc """
+    Ensures that attempting to create an assignment with match mode results in an error.
+    Match mode is not allowed for classroom assignments.
+    First creates necessary class and section records before testing assignment creation.
+    """
     test "assignment rejects match mode", %{org: org, set: set} do
       class = Ash.Seed.seed!(Class, %{name: "C1", organization_id: org.id})
 
@@ -35,8 +44,8 @@ defmodule Flashwars.Learning.ModeSeedTest do
           section_id: section.id,
           study_set_id: set.id,
           organization_id: org.id
-        })
-        |> Ash.create()
+        }) ||
+          Ash.create()
 
       assert %Ash.Error.Invalid{} = error
     end
@@ -45,6 +54,12 @@ defmodule Flashwars.Learning.ModeSeedTest do
   describe "deterministic test generation" do
     setup [:build_set]
 
+    @doc """
+    Verifies that test generation is deterministic based on the seed value.
+    Tests with the same seed should produce identical results, while different seeds
+    should produce different results. This ensures consistency in test generation
+    when the same seed is used multiple times.
+    """
     test "seed produces stable test", %{set: set} do
       items1 = Engine.generate_test(nil, set.id, size: 5, seed: 123)
       items2 = Engine.generate_test(nil, set.id, size: 5, seed: 123)
