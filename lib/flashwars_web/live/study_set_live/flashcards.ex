@@ -66,6 +66,21 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
      |> assign(:exclude_term_ids, exclude)}
   end
 
+  def handle_event("create_duel", _params, socket) do
+    actor = socket.assigns.current_user
+    set = socket.assigns.study_set
+
+    case Games.create_game_room(%{type: :duel, study_set_id: set.id, privacy: :private},
+           actor: actor
+         ) do
+      {:ok, room} ->
+        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
+
+      {:error, err} ->
+        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
@@ -100,20 +115,5 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       </div>
     </Layouts.app>
     """
-  end
-
-  def handle_event("create_duel", _params, socket) do
-    actor = socket.assigns.current_user
-    set = socket.assigns.study_set
-
-    case Games.create_game_room(%{type: :duel, study_set_id: set.id, privacy: :private},
-           actor: actor
-         ) do
-      {:ok, room} ->
-        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
-
-      {:error, err} ->
-        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
-    end
   end
 end

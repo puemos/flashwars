@@ -47,6 +47,21 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
     end
   end
 
+  def handle_event("create_duel", _params, socket) do
+    actor = socket.assigns.current_user
+    set = socket.assigns.study_set
+
+    case Games.create_game_room(%{type: :duel, study_set_id: set.id, privacy: :private},
+           actor: actor
+         ) do
+      {:ok, room} ->
+        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
+
+      {:error, err} ->
+        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
+    end
+  end
+
   defp read_terms(%StudySet{id: id}, actor) do
     Term
     |> Ash.Query.for_read(:for_study_set, %{study_set_id: id})
@@ -99,20 +114,5 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
       </div>
     </Layouts.app>
     """
-  end
-
-  def handle_event("create_duel", _params, socket) do
-    actor = socket.assigns.current_user
-    set = socket.assigns.study_set
-
-    case Games.create_game_room(%{type: :duel, study_set_id: set.id, privacy: :private},
-           actor: actor
-         ) do
-      {:ok, room} ->
-        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
-
-      {:error, err} ->
-        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
-    end
   end
 end

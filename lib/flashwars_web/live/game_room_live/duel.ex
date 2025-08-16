@@ -5,7 +5,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   require Ash.Query
 
   alias Flashwars.Games
-  alias Flashwars.Games.{GameRoom, GameRound, GameSubmission}
+  alias Flashwars.Games.{GameRoom, GameSubmission}
   alias FlashwarsWeb.Presence
 
   @topic_prefix "flash_wars:room:"
@@ -13,6 +13,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   # Load user from session if present; allow anonymous viewing
   on_mount {FlashwarsWeb.LiveUserAuth, :current_user}
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_optional}
+
+  # ============================================================================
+  # LiveView Callbacks
+  # ============================================================================
 
   def mount(%{"id" => id}, _session, socket) do
     case Ash.get(GameRoom, id, authorize?: false) do
@@ -41,126 +45,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       {:ok, Phoenix.LiveView.redirect(socket, to: ~p"/")}
     end
   end
-
-  defp allowed_to_view?(%{privacy: :public}, _user), do: true
-  defp allowed_to_view?(_room, nil), do: false
-
-  defp allowed_to_view?(room, %{id: uid}) do
-    cond do
-      room.host_id == uid -> true
-      true -> org_member?(room.organization_id, uid)
-    end
-  end
-
-  defp org_member?(org_id, user_id) do
-    alias Flashwars.Org.OrgMembership
-
-    OrgMembership
-    |> Ash.Query.filter(organization_id == ^org_id and user_id == ^user_id)
-    |> Ash.read!(authorize?: false)
-    |> case do
-      [] -> false
-      _ -> true
-    end
-  end
-
-  defp setup_for_room(room, socket) do
-    topic = topic(room.id)
-    if connected?(socket), do: Phoenix.PubSub.subscribe(Flashwars.PubSub, topic)
-
-    # Load latest round without auth to support link-only guests from other orgs
-    current_round =
-      Flashwars.Games.GameRound
-      |> Ash.Query.filter(game_room_id == ^room.id)
-      |> Ash.Query.sort(number: :desc)
-      |> Ash.Query.limit(1)
-      |> Ash.read!(authorize?: false)
-      |> List.first()
-
-    {:ok,
-     socket
-     |> assign(:page_title, "Duel · #{room.type}")
-     |> assign(:room, room)
-     |> assign(:topic, topic)
-     |> assign(:current_round, current_round)
-     |> assign(:answered?, false)
-     |> assign(:round_closed?, false)
-     |> assign(:selected_index, nil)
-     |> assign(:reveal, nil)
-     |> assign(:round_deadline_mono, nil)
-     |> assign(:intermission_deadline_mono, nil)
-     |> assign(:now_mono, nil)
-     |> assign(:nicknames, %{})
-     |> assign(:my_name, nil)
-     |> assign(:settings_form, Phoenix.Component.to_form(%{}, as: :settings))
-     |> assign(
-       :host?,
-       socket.assigns.current_user && socket.assigns.current_user.id == room.host_id
-     )
-     |> assign(:scoreboard, fetch_scoreboard(room, socket.assigns.current_user))
-     |> assign(:settings, settings_from_room(room))
-     |> maybe_track_presence(topic)}
-  end
-
-  defp maybe_track_presence(socket, topic) do
-    pres_avail? = presence_available?()
-
-    # Existing presences (before tracking current socket) for uniqueness
-    presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
-
-    used_names =
-      presences
-      |> Map.values()
-      |> Enum.flat_map(fn %{metas: metas} -> Enum.map(metas, & &1[:name]) end)
-      |> Enum.filter(&is_binary/1)
-      |> MapSet.new()
-
-    {my_name, nicknames} =
-      case socket.assigns.current_user do
-        nil ->
-          {nil, %{}}
-
-        %{id: uid} ->
-          # Prefer existing nickname if any, otherwise generate playful unique name
-          existing = socket.assigns[:nicknames] && socket.assigns.nicknames[uid]
-          base = existing || generate_playful_name(used_names)
-          name = ensure_unique_name(base, used_names)
-          {name, %{uid => name}}
-      end
-
-    if connected?(socket) and pres_avail? do
-      key = presence_key(socket.assigns.current_user)
-      meta = %{name: my_name || display_name(socket.assigns.current_user)}
-      _ = Presence.track(self(), topic, key, meta)
-    end
-
-    # Refresh presences after potential tracking
-    presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
-
-    socket
-    |> assign(:presences, presences)
-    |> assign(:ready_user_ids, MapSet.new())
-    |> assign(:intermission_rid, nil)
-    |> assign(:my_name, my_name)
-    |> assign(:nicknames, Map.merge(socket.assigns.nicknames, nicknames))
-  end
-
-  defp presence_available? do
-    Process.whereis(FlashwarsWeb.Presence) != nil
-  end
-
-  defp presence_list_safe(topic) do
-    try do
-      Presence.list(topic)
-    rescue
-      ArgumentError -> %{}
-    end
-  end
-
-  defp presence_key(nil),
-    do: "anon:" <> Base.url_encode64(:crypto.strong_rand_bytes(4), padding: false)
-
-  defp presence_key(%{id: uid}), do: to_string(uid)
 
   def handle_event("start", _params, %{assigns: %{room: room, host?: true}} = socket) do
     actor = socket.assigns.current_user
@@ -296,7 +180,83 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  # Host reacts to round close to reveal and schedule next
+  def handle_event("ready", %{"rid" => rid}, %{assigns: %{current_user: %{id: uid}}} = socket) do
+    # Only allow during intermission for the same round id
+    if socket.assigns.intermission_rid == rid do
+      new_set = MapSet.put(socket.assigns.ready_user_ids, uid)
+
+      PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+        event: :ready,
+        rid: rid,
+        user_id: uid
+      })
+
+      {:noreply, assign(socket, :ready_user_ids, new_set)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("ready", _params, socket), do: {:noreply, socket}
+
+  def handle_event("override_next", %{"rid" => rid}, %{assigns: %{host?: true}} = socket) do
+    send(self(), {:next_round, rid})
+    {:noreply, socket}
+  end
+
+  def handle_event("override_next", _params, socket), do: {:noreply, socket}
+
+  def handle_event("save_settings", %{"settings" => params}, socket) do
+    actor = socket.assigns.current_user
+    {config, privacy} = parse_settings(params)
+
+    case Games.update_config(socket.assigns.room, %{config: config, privacy: privacy},
+           actor: actor
+         ) do
+      {:ok, room} ->
+        {:noreply,
+         socket
+         |> assign(:room, room)
+         |> assign(:settings, settings_from_room(room))
+         |> put_flash(:info, "Settings saved")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not save settings: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("restart", _params, %{assigns: %{host?: true}} = socket) do
+    actor = socket.assigns.current_user
+    rid = socket.assigns.room.id
+
+    # Delete submissions and rounds for this room (org constraints checked internally)
+    Flashwars.Games.GameSubmission
+    |> Ash.Query.filter(game_room_id == ^rid)
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(fn s -> Ash.destroy!(s, authorize?: false) end)
+
+    Flashwars.Games.GameRound
+    |> Ash.Query.filter(game_room_id == ^rid)
+    |> Ash.read!(authorize?: false)
+    |> Enum.each(fn r -> Ash.destroy!(r, authorize?: false) end)
+
+    {:ok, room} = Games.advance_state(socket.assigns.room, :lobby, actor: actor)
+
+    {:noreply,
+     socket
+     |> assign(:room, room)
+     |> assign(:current_round, nil)
+     |> assign(:answered?, false)
+     |> assign(:round_closed?, false)
+     |> assign(:selected_index, nil)
+     |> assign(:reveal, nil)
+     |> assign(:round_deadline_mono, nil)
+     |> assign(:now_mono, nil)
+     |> assign(:scoreboard, fetch_scoreboard(room, actor))}
+  end
+
+  def handle_event("restart", _params, socket), do: {:noreply, socket}
+
   def handle_info(
         %{
           event: :round_closed,
@@ -339,7 +299,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  # Guests react to round close: lock and reveal
   def handle_info(
         %{
           event: :round_closed,
@@ -377,92 +336,16 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  # Everyone updates when a player sets their name
   def handle_info(%{event: :name_set, user_id: uid, name: name}, socket) do
     {:noreply,
      socket
      |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, name))}
   end
 
-  # Presence diff
   def handle_info(%{event: "presence_diff"}, socket) do
     {:noreply, assign(socket, :presences, presence_list_safe(socket.assigns.topic))}
   end
 
-  # Ready flow
-  def handle_event("ready", %{"rid" => rid}, %{assigns: %{current_user: %{id: uid}}} = socket) do
-    # Only allow during intermission for the same round id
-    if socket.assigns.intermission_rid == rid do
-      new_set = MapSet.put(socket.assigns.ready_user_ids, uid)
-
-      PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-        event: :ready,
-        rid: rid,
-        user_id: uid
-      })
-
-      {:noreply, assign(socket, :ready_user_ids, new_set)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("ready", _params, socket), do: {:noreply, socket}
-
-  def handle_event("override_next", %{"rid" => rid}, %{assigns: %{host?: true}} = socket) do
-    send(self(), {:next_round, rid})
-    {:noreply, socket}
-  end
-
-  def handle_event("override_next", _params, socket), do: {:noreply, socket}
-
-  def handle_info(%{event: :ready, rid: rid, user_id: uid}, socket) do
-    if socket.assigns.intermission_rid == rid do
-      new_set = MapSet.put(socket.assigns.ready_user_ids, uid)
-      socket = assign(socket, :ready_user_ids, new_set)
-
-      # Host: check threshold to maybe start early
-      socket =
-        if socket.assigns.host? do
-          if threshold_met?(socket) do
-            send(self(), {:next_round, rid})
-          end
-
-          socket
-        else
-          socket
-        end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  defp threshold_met?(socket) do
-    present = map_size(socket.assigns.presences)
-    ready = MapSet.size(socket.assigns.ready_user_ids)
-    needed = max(1, trunc(Float.ceil(present * 0.6)))
-    present > 0 and ready >= needed
-  end
-
-  # All clients update on new rounds
-  def handle_info(%{event: :new_round, round: round}, socket) do
-    {:noreply,
-     socket
-     |> assign(:current_round, round)
-     |> assign(:answered?, false)
-     |> assign(:round_closed?, false)
-     |> assign(:selected_index, nil)
-     |> assign(:reveal, nil)
-     |> assign(:intermission_deadline_mono, nil)
-     |> assign(:intermission_rid, nil)
-     |> assign(:ready_user_ids, MapSet.new())
-     |> setup_round_timer()
-     |> assign(:scoreboard, fetch_scoreboard(socket.assigns.room, socket.assigns.current_user))}
-  end
-
-  # Host timeout: no answers until time up, close round
   def handle_info({:time_up, rid}, %{assigns: %{host?: true}} = socket) do
     case socket.assigns.current_round do
       %{id: ^rid} = round ->
@@ -485,7 +368,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  # Host schedules next round generation after reveal delay
   def handle_info({:next_round, rid}, %{assigns: %{host?: true}} = socket) do
     case socket.assigns.current_round do
       %{id: ^rid} ->
@@ -533,13 +415,49 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  # Everyone updates when the game ends
+  def handle_info(%{event: :ready, rid: rid, user_id: uid}, socket) do
+    if socket.assigns.intermission_rid == rid do
+      new_set = MapSet.put(socket.assigns.ready_user_ids, uid)
+      socket = assign(socket, :ready_user_ids, new_set)
+
+      # Host: check threshold to maybe start early
+      socket =
+        if socket.assigns.host? do
+          if threshold_met?(socket) do
+            send(self(), {:next_round, rid})
+          end
+
+          socket
+        else
+          socket
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(%{event: :new_round, round: round}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_round, round)
+     |> assign(:answered?, false)
+     |> assign(:round_closed?, false)
+     |> assign(:selected_index, nil)
+     |> assign(:reveal, nil)
+     |> assign(:intermission_deadline_mono, nil)
+     |> assign(:intermission_rid, nil)
+     |> assign(:ready_user_ids, MapSet.new())
+     |> setup_round_timer()
+     |> assign(:scoreboard, fetch_scoreboard(socket.assigns.room, socket.assigns.current_user))}
+  end
+
   def handle_info(%{event: :game_over}, socket) do
     {:noreply,
      assign(socket, :room, %{socket.assigns.room | state: :ended, ended_at: DateTime.utc_now()})}
   end
 
-  # Tick for countdown display
   def handle_info(:tick, %{assigns: %{round_deadline_mono: nil}} = socket), do: {:noreply, socket}
 
   def handle_info(:tick, socket) do
@@ -548,7 +466,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     {:noreply, assign(socket, :now_mono, System.monotonic_time(:millisecond))}
   end
 
-  # Separate tick for intermission countdown
   def handle_info(:intermission_tick, %{assigns: %{intermission_deadline_mono: nil}} = socket),
     do: {:noreply, socket}
 
@@ -557,8 +474,138 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     {:noreply, assign(socket, :now_mono, System.monotonic_time(:millisecond))}
   end
 
-  # Ignore unknown messages
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # ============================================================================
+  # Private Helper Functions
+  # ============================================================================
+
+  defp allowed_to_view?(%{privacy: :public}, _user), do: true
+  defp allowed_to_view?(_room, nil), do: false
+
+  defp allowed_to_view?(room, %{id: uid}) do
+    cond do
+      room.host_id == uid -> true
+      true -> org_member?(room.organization_id, uid)
+    end
+  end
+
+  defp org_member?(org_id, user_id) do
+    alias Flashwars.Org.OrgMembership
+
+    OrgMembership
+    |> Ash.Query.filter(organization_id == ^org_id and user_id == ^user_id)
+    |> Ash.read!(authorize?: false)
+    |> case do
+      [] -> false
+      _ -> true
+    end
+  end
+
+  defp setup_for_room(room, socket) do
+    topic = topic(room.id)
+    if connected?(socket), do: Phoenix.PubSub.subscribe(Flashwars.PubSub, topic)
+
+    # Load latest round without auth to support link-only guests from other orgs
+    current_round =
+      Flashwars.Games.GameRound
+      |> Ash.Query.filter(game_room_id == ^room.id)
+      |> Ash.Query.sort(number: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read!(authorize?: false)
+      |> List.first()
+
+    {:ok,
+     socket
+     |> assign(:page_title, "Duel · #{room.type}")
+     |> assign(:room, room)
+     |> assign(:topic, topic)
+     |> assign(:current_round, current_round)
+     |> assign(:answered?, false)
+     |> assign(:round_closed?, false)
+     |> assign(:selected_index, nil)
+     |> assign(:reveal, nil)
+     |> assign(:round_deadline_mono, nil)
+     |> assign(:intermission_deadline_mono, nil)
+     |> assign(:now_mono, nil)
+     |> assign(:nicknames, %{})
+     |> assign(:my_name, nil)
+     |> assign(:settings_form, Phoenix.Component.to_form(%{}, as: :settings))
+     |> assign(
+       :host?,
+       socket.assigns.current_user && socket.assigns.current_user.id == room.host_id
+     )
+     |> assign(:scoreboard, fetch_scoreboard(room, socket.assigns.current_user))
+     |> assign(:settings, settings_from_room(room))
+     |> maybe_track_presence(topic)}
+  end
+
+  defp maybe_track_presence(socket, topic) do
+    pres_avail? = presence_available?()
+
+    # Existing presences (before tracking current socket) for uniqueness
+    presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
+
+    used_names =
+      presences
+      |> Map.values()
+      |> Enum.flat_map(fn %{metas: metas} -> Enum.map(metas, & &1[:name]) end)
+      |> Enum.filter(&is_binary/1)
+      |> MapSet.new()
+
+    {my_name, nicknames} =
+      case socket.assigns.current_user do
+        nil ->
+          {nil, %{}}
+
+        %{id: uid} ->
+          # Prefer existing nickname if any, otherwise generate playful unique name
+          existing = socket.assigns[:nicknames] && socket.assigns.nicknames[uid]
+          base = existing || generate_playful_name(used_names)
+          name = ensure_unique_name(base, used_names)
+          {name, %{uid => name}}
+      end
+
+    if connected?(socket) and pres_avail? do
+      key = presence_key(socket.assigns.current_user)
+      meta = %{name: my_name || display_name(socket.assigns.current_user)}
+      _ = Presence.track(self(), topic, key, meta)
+    end
+
+    # Refresh presences after potential tracking
+    presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
+
+    socket
+    |> assign(:presences, presences)
+    |> assign(:ready_user_ids, MapSet.new())
+    |> assign(:intermission_rid, nil)
+    |> assign(:my_name, my_name)
+    |> assign(:nicknames, Map.merge(socket.assigns.nicknames, nicknames))
+  end
+
+  defp presence_available? do
+    Process.whereis(FlashwarsWeb.Presence) != nil
+  end
+
+  defp presence_list_safe(topic) do
+    try do
+      Presence.list(topic)
+    rescue
+      ArgumentError -> %{}
+    end
+  end
+
+  defp presence_key(nil),
+    do: "anon:" <> Base.url_encode64(:crypto.strong_rand_bytes(4), padding: false)
+
+  defp presence_key(%{id: uid}), do: to_string(uid)
+
+  defp threshold_met?(socket) do
+    present = map_size(socket.assigns.presences)
+    ready = MapSet.size(socket.assigns.ready_user_ids)
+    needed = max(1, trunc(Float.ceil(present * 0.6)))
+    present > 0 and ready >= needed
+  end
 
   defp topic(id), do: @topic_prefix <> to_string(id)
 
@@ -579,25 +626,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       %{user_id: user_id, user: user, name: display_name(user), score: total}
     end)
     |> Enum.sort_by(& &1.score, :desc)
-  end
-
-  def handle_event("save_settings", %{"settings" => params}, socket) do
-    actor = socket.assigns.current_user
-    {config, privacy} = parse_settings(params)
-
-    case Games.update_config(socket.assigns.room, %{config: config, privacy: privacy},
-           actor: actor
-         ) do
-      {:ok, room} ->
-        {:noreply,
-         socket
-         |> assign(:room, room)
-         |> assign(:settings, settings_from_room(room))
-         |> put_flash(:info, "Settings saved")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Could not save settings: #{inspect(reason)}")}
-    end
   end
 
   defp settings_from_room(%{config: cfg} = room) do
@@ -701,7 +729,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   defp display_name(_), do: "Player"
 
-  defp name_for(assigns, nil), do: "Player"
+  defp name_for(_assigns, nil), do: "Player"
 
   defp name_for(assigns, uid) do
     Map.get(assigns.nicknames, uid) ||
@@ -736,6 +764,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       base
     end
   end
+
+  # ============================================================================
+  # Render
+  # ============================================================================
 
   def render(assigns) do
     ~H"""
@@ -1054,37 +1086,4 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     </Layouts.app>
     """
   end
-
-  # Restart flow: host only
-  def handle_event("restart", _params, %{assigns: %{host?: true}} = socket) do
-    actor = socket.assigns.current_user
-    rid = socket.assigns.room.id
-
-    # Delete submissions and rounds for this room (org constraints checked internally)
-    Flashwars.Games.GameSubmission
-    |> Ash.Query.filter(game_room_id == ^rid)
-    |> Ash.read!(authorize?: false)
-    |> Enum.each(fn s -> Ash.destroy!(s, authorize?: false) end)
-
-    Flashwars.Games.GameRound
-    |> Ash.Query.filter(game_room_id == ^rid)
-    |> Ash.read!(authorize?: false)
-    |> Enum.each(fn r -> Ash.destroy!(r, authorize?: false) end)
-
-    {:ok, room} = Games.advance_state(socket.assigns.room, :lobby, actor: actor)
-
-    {:noreply,
-     socket
-     |> assign(:room, room)
-     |> assign(:current_round, nil)
-     |> assign(:answered?, false)
-     |> assign(:round_closed?, false)
-     |> assign(:selected_index, nil)
-     |> assign(:reveal, nil)
-     |> assign(:round_deadline_mono, nil)
-     |> assign(:now_mono, nil)
-     |> assign(:scoreboard, fetch_scoreboard(room, actor))}
-  end
-
-  def handle_event("restart", _params, socket), do: {:noreply, socket}
 end

@@ -4,7 +4,6 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
   alias Flashwars.Content
   alias Flashwars.Learning
   alias Flashwars.Learning.Engine
-  alias Flashwars.Games
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_member}

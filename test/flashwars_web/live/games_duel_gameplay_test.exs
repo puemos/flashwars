@@ -77,12 +77,11 @@ defmodule FlashwarsWeb.GamesDuelGameplayTest do
     {:ok, guest_lv, _} = live(conn_guest, ~p"/games/r/#{room.id}")
 
     # Fetch current round and pick first choice (may be wrong)
-    r1 =
-      GameRound
-      |> Ash.Query.filter(game_room_id == ^room.id)
-      |> Ash.Query.sort(number: :desc)
-      |> Ash.read!(authorize?: false)
-      |> List.first()
+    GameRound
+    |> Ash.Query.filter(game_room_id == ^room.id)
+    |> Ash.Query.sort(number: :desc)
+    |> Ash.read!(authorize?: false)
+    |> List.first()
 
     # Click on guest (first option)
     _ = guest_lv |> element("#duel-round button[phx-value-index='0']") |> render_click()

@@ -4,7 +4,7 @@ defmodule FlashwarsWeb.GamesDuelLinkAccessTest do
 
   import Phoenix.LiveViewTest
   alias Flashwars.{Content, Games, Org}
-  alias Flashwars.Games.{GameRoom, GameRound}
+  alias Flashwars.Games.{GameRound}
   alias Flashwars.Accounts.User
   alias Flashwars.Org.Organization
 
