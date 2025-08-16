@@ -1,21 +1,19 @@
 defmodule FlashwarsWeb.GameComponents do
   @moduledoc """
-  Small, focused components that match the existing 'peak' design.
-  No extra CSS beyond the classes you already have in app.css.
+  Game UI components that match the overlay look & feel.
+  Uses Tailwind + daisyUI + your helper classes only:
+  game-gradient, bg-pan, animate-pop, animate-float, win-glow, lose-glow,
+  overlay-progress (.bar), confetti-[0..4].
   """
   use Phoenix.Component
 
-  # -- Lobby players ----------------------------------------------------------
-
+  # ========== LOBBY ==========
   attr :presences, :map, required: true
 
   def lobby_players(assigns) do
     ~H"""
     <ul>
-      <li
-        :for={{key, %{metas: metas}} <- @presences}
-        class="flex items-center gap-2 py-1"
-      >
+      <li :for={{key, %{metas: metas}} <- @presences} class="flex items-center gap-2 py-1">
         <span class="badge badge-success"></span>
         <span>{List.first(metas)[:name] || String.slice(key, 0, 6)}</span>
       </li>
@@ -23,8 +21,49 @@ defmodule FlashwarsWeb.GameComponents do
     """
   end
 
-  # -- Choices ---------------------------------------------------------------
+  # ========== HUD (sticky bar with gentle gradient + overlay-style progress) ==========
+  attr :round, :integer, required: true
+  attr :rounds, :integer, required: true
+  attr :seconds_left, :integer, default: nil
+  attr :pct, :float, default: nil
+  attr :players_count, :integer, required: true
 
+  def hud(assigns) do
+    ~H"""
+    <div class="sticky top-0 z-30">
+      <div class="relative border-b border-base-300">
+        <div class="relative mx-auto max-w-6xl px-4 py-3 grid grid-cols-3 items-center">
+          <div class="text-sm opacity-90">
+            <div class="uppercase text-xs">Round</div>
+            <div class="font-extrabold tabular-nums">{@round}/{@rounds}</div>
+          </div>
+
+          <div class="text-center">
+            <div class="uppercase text-xs opacity-90">Time left</div>
+            <div :if={@seconds_left != nil} class="font-extrabold tabular-nums animate-pop">
+              {@seconds_left}s
+            </div>
+            <div :if={@seconds_left == nil} class="font-extrabold">—</div>
+            <div
+              :if={@pct != nil}
+              class="mt-1 h-3 rounded-full overflow-hidden overlay-progress"
+              style={"--pct: #{@pct}%"}
+            >
+              <div class="bar"></div>
+            </div>
+          </div>
+
+          <div class="text-right text-sm opacity-90">
+            <div class="uppercase text-xs">Players</div>
+            <div class="font-extrabold tabular-nums">{@players_count}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ========== CHOICES (default to purple instead of gray; keep success/error reveal) ==========
   attr :choices, :list, default: []
   attr :reveal, :map, default: nil
   attr :round_closed?, :boolean, default: false
@@ -38,46 +77,122 @@ defmodule FlashwarsWeb.GameComponents do
         <% is_wrong =
           @round_closed? && @reveal && idx == @reveal.selected_index &&
             @reveal.selected_index != @reveal.correct_index %>
+        <% letter = <<?A + idx>> %>
         <button
           type="button"
-          class={[
-            "btn",
-            is_correct && "btn-success",
-            is_wrong && "btn-error"
-          ]}
+          class={
+            [
+              # Default now purple (btn-secondary), not gray neutral
+              "btn btn-lg w-full py-10 justify-start items-center gap-3 whitespace-normal shadow-lg transition-transform hover:-translate-y-0.5",
+              is_correct && "btn-success",
+              is_wrong && "btn-error",
+              !is_correct && !is_wrong && "bg-base-100"
+            ]
+          }
           phx-click="answer"
           phx-value-index={idx}
           disabled={@answered? || @round_closed?}
         >
-          {choice}
+          <kbd class="kbd kbd-lg">{letter}</kbd>
+          <span class="font-semibold">{choice}</span>
         </button>
       <% end %>
     </div>
     """
   end
 
-  # -- Scoreboard ------------------------------------------------------------
+  # ========== READY ROW ==========
+  attr :current_user, :any, default: nil
+  attr :intermission_rid, :any, default: nil
+  attr :ready_user_ids, :any, default: MapSet.new()
+  attr :presences, :map, default: %{}
+  attr :host?, :boolean, default: false
 
+  def ready_row(assigns) do
+    ~H"""
+    <div class="flex items-center gap-3">
+      <div :if={@current_user && @intermission_rid}>
+        <button
+          :if={!MapSet.member?(@ready_user_ids, @current_user.id)}
+          class="btn btn-primary"
+          phx-click="ready"
+          phx-value-rid={@intermission_rid}
+        >
+          Ready
+        </button>
+        <button :if={MapSet.member?(@ready_user_ids, @current_user.id)} class="btn btn-ghost" disabled>
+          Ready ✔️
+        </button>
+      </div>
+
+      <div class="text-sm opacity-80">
+        Players ready: {MapSet.size(@ready_user_ids)} / {map_size(@presences)}
+      </div>
+
+      <button
+        :if={@host? && @intermission_rid}
+        class="btn btn-outline"
+        phx-click="override_next"
+        phx-value-rid={@intermission_rid}
+      >
+        Start Next Now
+      </button>
+    </div>
+    """
+  end
+
+  # ========== COUNTDOWN (overlay-style) ==========
+  attr :label, :string, required: true
+  attr :seconds_left, :integer, required: true
+  attr :pct, :float, required: true
+
+  def countdown(assigns) do
+    ~H"""
+    <div>
+      <div class="text-sm">
+        {@label} <span class="tabular-nums font-semibold"><%= @seconds_left %></span>s
+      </div>
+      <div class="mt-1 h-3 rounded-full overflow-hidden overlay-progress" style={"--pct: #{@pct}%"}>
+        <div class="bar"></div>
+      </div>
+    </div>
+    """
+  end
+
+  # ========== RANKED SCOREBOARD ==========
   attr :entries, :list, required: true
   attr :nicknames, :map, default: %{}
 
   def scoreboard(assigns) do
     ~H"""
     <ul>
-      <li :for={entry <- @entries} class="flex justify-between">
-        <span>{Map.get(@nicknames, entry.user_id) || entry.name}</span>
-        <span class="font-semibold">{entry.score}</span>
+      <li
+        :for={{entry, idx} <- Enum.with_index(@entries, 1)}
+        class="flex justify-between items-center py-2"
+      >
+        <span class="flex items-center gap-2">
+          <span class={[
+            "badge",
+            idx == 1 && "badge-warning",
+            idx == 2 && "badge-info",
+            idx == 3 && "badge-secondary",
+            idx > 3 && "badge-ghost"
+          ]}>
+            {idx}
+          </span>
+          {Map.get(@nicknames, entry.user_id) || entry.name}
+          <span :if={idx == 1} class="badge badge-success ml-1">Winner</span>
+        </span>
+        <span class="font-semibold tabular-nums">{entry.score}</span>
       </li>
     </ul>
     """
   end
 
-  # -- Result overlay (win/lose + next-round) --------------------------------
-
+  # ========== RESULT OVERLAY (unchanged) ==========
   attr :won, :boolean, required: true
   attr :seconds_left, :integer, required: true
   attr :pct, :float, required: true
-
   attr :current_user, :any, default: nil
   attr :intermission_rid, :any, default: nil
   attr :ready_user_ids, :any, default: MapSet.new()
@@ -91,10 +206,8 @@ defmodule FlashwarsWeb.GameComponents do
       phx-hook="RoundOverlay"
       class="fixed inset-0 z-50 flex items-center justify-center select-none"
     >
-      <!-- Animated gradient background -->
       <div class="absolute inset-0 opacity-70 game-gradient bg-pan"></div>
-      
-    <!-- Content -->
+
       <div class="relative z-10 mx-4 w-full max-w-4xl">
         <div class={[
           "text-center text-white text-6xl md:text-7xl font-extrabold animate-pop",
@@ -108,16 +221,14 @@ defmodule FlashwarsWeb.GameComponents do
           <div class="text-white/90 text-2xl md:text-4xl font-black animate-float">
             Next round in <span class="tabular-nums"><%= @seconds_left %></span>s
           </div>
-          
-    <!-- Big progress bar driven by --pct -->
+
           <div
             class="mt-4 h-6 md:h-8 w-full rounded-full overflow-hidden overlay-progress"
             style={"--pct: #{@pct}%"}
           >
             <div class="bar"></div>
           </div>
-          
-    <!-- Ready row -->
+
           <div class="mt-6 flex items-center justify-center gap-3">
             <%= if @current_user && @intermission_rid do %>
               <button
@@ -152,8 +263,7 @@ defmodule FlashwarsWeb.GameComponents do
           </div>
         </div>
       </div>
-      
-    <!-- Confetti on win -->
+
       <div :if={@won} aria-hidden class="pointer-events-none absolute inset-0">
         <div
           :for={i <- 1..36}
@@ -164,16 +274,5 @@ defmodule FlashwarsWeb.GameComponents do
       </div>
     </div>
     """
-  end
-
-  defp ms_remaining(nil, _now), do: nil
-
-  defp ms_remaining(deadline, nil) when is_integer(deadline) do
-    now = System.monotonic_time(:millisecond)
-    max(deadline - now, 0)
-  end
-
-  defp ms_remaining(deadline, now) when is_integer(deadline) and is_integer(now) do
-    max(deadline - now, 0)
   end
 end

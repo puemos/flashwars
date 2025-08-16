@@ -27,26 +27,36 @@
     default: false;
     prefersdark: true;
     color-scheme: "dark";
-    --color-base-100: #301a6b; /* Dark purple for background */
-    --color-base-200: #3d247a; /* Slightly lighter purple for elements */
-    --color-base-300: #4a2e89; /* Even lighter purple for accents */
-    --color-base-content: #ffffff; /* White text for readability */
-    --color-primary: #6520a0; /* Main purple from theme color */
-    --color-primary-content: #ffffff; /* White text on purple */
-    --color-secondary: #852c8a; /* Deeper purple for secondary elements */
-    --color-secondary-content: #ffffff; /* White text on secondary */
-    --color-accent: #5cffb6; /* Neon green accent from tutorial headings */
-    --color-accent-content: #301a6b; /* Dark purple text on accent */
-    --color-neutral: #aaaaaa; /* Neutral gray from drawing palette */
-    --color-neutral-content: #ffffff; /* White text on neutral */
-    --color-info: #26c9ff; /* Cyan from drawing palette */
-    --color-info-content: #301a6b; /* Dark purple text on info */
-    --color-success: #11b03c; /* Green from drawing palette */
-    --color-success-content: #ffffff; /* White text on success */
-    --color-warning: #ffc126; /* Gold/yellow from drawing palette */
-    --color-warning-content: #301a6b; /* Dark purple text on warning */
-    --color-error: #ff0013; /* Red from drawing palette */
-    --color-error-content: #ffffff; /* White text on error */
+    /* Slightly deeper base to make neons pop */
+    --color-base-100: #28125b; /* was #301a6b */
+    --color-base-200: #341a6d; /* was #3d247a */
+    --color-base-300: #41237d; /* was #4a2e89 */
+    --color-base-content: #ffffff;
+
+    /* Brand core unchanged, but you can bump saturation if desired */
+    --color-primary: #6b21a8; /* richer purple (tailwind-violet ~700) */
+    --color-primary-content: #ffffff;
+    --color-secondary: #a21caf; /* deeper magenta/violet */
+    --color-secondary-content: #ffffff;
+
+    /* Keep the neon accent – great contrast against deep purple */
+    --color-accent: #5cffb6;
+    --color-accent-content: #28125b;
+
+    /* >>> The key change: make neutral PURPLE, not gray */
+    --color-neutral: #6f4ab8; /* purple-neutral (no more gray UI) */
+    --color-neutral-content: #ffffff;
+
+    /* Support colors – keep, or nudge towards Tailwind-friendly hues */
+    --color-info: #38bdf8; /* friendlier cyan */
+    --color-info-content: #28125b;
+    --color-success: #22c55e; /* tailwind green-500 */
+    --color-success-content: #ffffff;
+    --color-warning: #f59e0b; /* tailwind amber-500 */
+    --color-warning-content: #28125b;
+    --color-error: #ef4444; /* tailwind red-500 */
+    --color-error-content: #ffffff;
+
     --radius-selector: 1rem;
     --radius-field: 1rem;
     --radius-box: 1rem;

@@ -731,14 +731,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   defp display_name(_), do: "Player"
 
-  defp name_for(_assigns, nil), do: "Player"
-
-  defp name_for(assigns, uid) do
-    Map.get(assigns.nicknames, uid) ||
-      Enum.find_value(assigns.scoreboard, fn e -> e.user_id == uid && e.name end) ||
-      "Player"
-  end
-
   @adjectives ~w(Brisk Clever Zippy Sly Jolly Witty Sunny Swift Cosmic Daring Jazzy Lively Quirky Rapid Snazzy)
   @animals ~w(Panda Falcon Tiger Koala Otter Fox Dolphin Llama Badger Eagle Gecko Panda Yak Corgi Puma)
 
@@ -787,13 +779,35 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           <button :if={@host? && @room.state == :lobby} class="btn btn-primary" phx-click="start">
             Start Game
           </button>
-          <button :if={@host? && @room.state == :ended} class="btn" phx-click="restart">
+          <button :if={@host? && @room.state == :ended} class="btn btn-secondary" phx-click="restart">
             Start New Game
           </button>
         </:actions>
       </.header>
-      
-    <!-- HOST SETTINGS -->
+
+      <% round_seconds =
+        if @round_deadline_mono,
+          do: round(Float.ceil((ms_remaining(@round_deadline_mono, @now_mono) || 0) / 1000.0)),
+          else: nil
+
+      round_pct =
+        if @round_deadline_mono do
+          rem = ms_remaining(@round_deadline_mono, @now_mono) || 0
+          total = @settings.time_limit_ms || 1
+          bar = if total <= 0, do: 0, else: max(min(total - rem, total), 0)
+          if total <= 0, do: 0.0, else: bar * 100.0 / total
+        else
+          nil
+        end %>
+      <GameComponents.hud
+        :if={@current_round && @room.state != :ended}
+        round={@current_round.number}
+        rounds={@settings.rounds}
+        seconds_left={round_seconds}
+        pct={round_pct}
+        players_count={map_size(@presences)}
+      />
+
       <div :if={@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
           <h3 class="card-title">Game Settings</h3>
@@ -864,10 +878,11 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               <label class="block text-sm font-medium">Copy Invitation Link</label>
               <div class="flex gap-2 items-center mt-2">
                 <input class="input flex-1" type="text" readonly value={invitation_link(@room)} />
+                <!-- use secondary so it's purple, not neutral -->
                 <button
                   id="copy-invite"
                   type="button"
-                  class="btn"
+                  class="btn btn-secondary"
                   phx-hook="CopyToClipboard"
                   data-text={invitation_link(@room)}
                 >
@@ -882,15 +897,14 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </.form>
         </div>
       </div>
-      
-    <!-- PLAYER NAME -->
+
       <div :if={!@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
           <h3 class="card-title">Your Game Name</h3>
           <.form for={%{}} as={:name} id="duel-name-form" phx-submit="set_name">
             <div class="flex gap-2">
               <input
-                class="input input-bordered flex-1"
+                class="input input-bordered flex-1 font-semibold"
                 name="name"
                 type="text"
                 value={@my_name || ""}
@@ -902,40 +916,19 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </.form>
         </div>
       </div>
-      
-    <!-- LOBBY PLAYERS -->
+
       <div :if={@room.state == :lobby} class="card bg-base-100 mb-4">
         <div class="card-body">
           <h4 class="font-semibold">Players in Lobby</h4>
           <GameComponents.lobby_players presences={@presences} />
         </div>
       </div>
-      
-    <!-- ROUND -->
+
       <div :if={@current_round && @room.state != :ended} id="duel-round" class="space-y-4">
         <div class="card bg-base-200">
           <div class="card-body">
             <div class="text-sm opacity-70">
               Question {@current_round.number} of {@settings.rounds}
-            </div>
-            
-    <!-- Round timer (unchanged so ms_remaining stays local) -->
-            <div :if={@round_deadline_mono} class="text-sm space-y-1">
-              <div>
-                Time left: {round(
-                  Float.ceil((ms_remaining(@round_deadline_mono, @now_mono) || 0) / 1000.0)
-                )}s
-              </div>
-              <progress
-                class="progress progress-primary w-full"
-                value={
-                  rem = ms_remaining(@round_deadline_mono, @now_mono) || 0
-                  total = @settings.time_limit_ms || 1
-                  if total <= 0, do: 0, else: max(min(total - rem, total), 0)
-                }
-                max={@settings.time_limit_ms || 1}
-              >
-              </progress>
             </div>
 
             <h3 class="text-xl font-semibold">
@@ -944,98 +937,16 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
             <GameComponents.choices
               choices={
-                @current_round.question_data[:choices] ||
-                  @current_round.question_data["choices"] || []
+                @current_round.question_data[:choices] || @current_round.question_data["choices"] ||
+                  []
               }
               reveal={@reveal}
               round_closed?={@round_closed?}
               answered?={@answered?}
             />
-
-            <div :if={@round_closed?} class="mt-4 space-y-2">
-              <div class="alert">
-                <span :if={@reveal && @reveal.user_id}>
-                  {name_for(assigns, @reveal.user_id)} selected {Enum.at(
-                    @current_round.question_data[:choices] || @current_round.question_data["choices"] ||
-                      [],
-                    @reveal.selected_index || -1
-                  )}.
-                </span>
-                <span :if={@reveal && @reveal.user_id && @reveal.correct?} class="ml-1 text-success">
-                  Correct!
-                </span>
-                <span :if={@reveal && @reveal.user_id && !@reveal.correct?} class="ml-1 text-error">
-                  Incorrect.
-                </span>
-                <span class="ml-2">
-                  Correct answer: {Enum.at(
-                    @current_round.question_data[:choices] || @current_round.question_data["choices"] ||
-                      [],
-                    (@reveal && @reveal.correct_index) ||
-                      (@current_round.question_data[:answer_index] ||
-                         @current_round.question_data["answer_index"]) || -1
-                  )}
-                </span>
-              </div>
-
-              <div :if={@current_user} class="text-lg font-semibold">
-                {case {@reveal && @reveal.correct?, @reveal && @reveal.user_id == @current_user.id} do
-                  {true, true} -> "You won! 🏆"
-                  {true, false} -> "You lose!"
-                  {false, true} -> "You lose!"
-                  {false, false} -> "You won!"
-                end}
-              </div>
-
-              <div class="flex items-center gap-3">
-                <div :if={@current_user && @intermission_rid}>
-                  <button
-                    :if={!MapSet.member?(@ready_user_ids, @current_user.id)}
-                    class="btn btn-primary"
-                    phx-click="ready"
-                    phx-value-rid={@intermission_rid}
-                  >
-                    Ready
-                  </button>
-                  <button :if={MapSet.member?(@ready_user_ids, @current_user.id)} class="btn" disabled>
-                    Ready ✔️
-                  </button>
-                </div>
-                <div class="text-sm opacity-80">
-                  Players ready: {MapSet.size(@ready_user_ids)} / {map_size(@presences)}
-                </div>
-                <button
-                  :if={@host? && @intermission_rid}
-                  class="btn"
-                  phx-click="override_next"
-                  phx-value-rid={@intermission_rid}
-                >
-                  Start Next Now
-                </button>
-              </div>
-
-              <div :if={@intermission_deadline_mono} class="mt-2">
-                <div class="text-sm">
-                  Next round in {round(
-                    Float.ceil((ms_remaining(@intermission_deadline_mono, @now_mono) || 0) / 1000.0)
-                  )}s
-                </div>
-                <progress
-                  class="progress w-full"
-                  value={
-                    rem = ms_remaining(@intermission_deadline_mono, @now_mono) || 0
-                    total = @settings.intermission_ms || 1
-                    if total <= 0, do: 0, else: max(min(total - rem, total), 0)
-                  }
-                  max={@settings.intermission_ms || 1}
-                >
-                </progress>
-              </div>
-            </div>
           </div>
         </div>
-        
-    <!-- Scoreboard -->
+
         <div class="card bg-base-100">
           <div class="card-body">
             <h4 class="font-semibold">Scoreboard</h4>
@@ -1050,27 +961,19 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </div>
         </div>
       </div>
-      
-    <!-- LOBBY WAIT -->
-      <div :if={!@current_round && @room.state == :lobby} class="alert">
+
+      <div :if={!@current_round && @room.state == :lobby} class="alert alert-secondary">
         Waiting for host to start…
       </div>
-      
-    <!-- GAME OVER -->
+
       <div :if={@room.state == :ended} class="space-y-4">
-        <div class="alert alert-info">Game Over. {if @host?, do: "You can start a new game."}</div>
+        <div class="alert alert-info">
+          Game Over. {if @host?, do: "You can start a new game."}
+        </div>
         <div class="card bg-base-100">
           <div class="card-body">
             <h4 class="font-semibold">Final Scores</h4>
-            <ul>
-              <li :for={{entry, idx} <- Enum.with_index(@scoreboard, 1)} class="flex justify-between">
-                <span>
-                  {idx}. {Map.get(@nicknames, entry.user_id) || entry.name}
-                  <span :if={idx == 1} class="badge badge-success ml-2">Winner</span>
-                </span>
-                <span class="font-semibold">{entry.score}</span>
-              </li>
-            </ul>
+            <GameComponents.scoreboard entries={@scoreboard} nicknames={@nicknames} />
           </div>
         </div>
       </div>
@@ -1082,8 +985,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
       inter_total = @settings.intermission_ms || 1
       inter_val = if inter_total <= 0, do: 0, else: max(min(inter_total - inter_rem, inter_total), 0)
-      pct = if inter_total <= 0, do: 0.0, else: inter_val * 100.0 / inter_total
-      seconds_left = round(Float.ceil(inter_rem / 1000.0))
+      overlay_pct = if inter_total <= 0, do: 0.0, else: inter_val * 100.0 / inter_total
+      overlay_secs = round(Float.ceil(inter_rem / 1000.0))
 
       won =
         case {@reveal && @reveal.correct?,
@@ -1094,12 +997,11 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           {false, false} -> true
           _ -> false
         end %>
-
       <GameComponents.result_overlay
         :if={@room.state != :ended and @round_closed?}
         won={won}
-        seconds_left={seconds_left}
-        pct={pct}
+        seconds_left={overlay_secs}
+        pct={overlay_pct}
         current_user={@current_user}
         intermission_rid={@intermission_rid}
         ready_user_ids={@ready_user_ids}
