@@ -8,6 +8,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   alias Flashwars.Games.{GameRoom, GameSubmission}
   alias FlashwarsWeb.Presence
 
+  alias FlashwarsWeb.GameComponents
+
   @topic_prefix "flash_wars:room:"
 
   # Load user from session if present; allow anonymous viewing
@@ -673,7 +675,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  defp invitation_link(room), do: ~p"/games/t/#{room.link_token}"
+  defp invitation_link(room), do: "#{FlashwarsWeb.Endpoint.url()}/games/t/#{room.link_token}"
 
   defp intermission_ms(settings) do
     settings[:intermission_ms] || settings["intermission_ms"] || 10_000
@@ -790,7 +792,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </button>
         </:actions>
       </.header>
-
+      
+    <!-- HOST SETTINGS -->
       <div :if={@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
           <h3 class="card-title">Game Settings</h3>
@@ -879,7 +882,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </.form>
         </div>
       </div>
-
+      
+    <!-- PLAYER NAME -->
       <div :if={!@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
           <h3 class="card-title">Your Game Name</h3>
@@ -898,27 +902,24 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </.form>
         </div>
       </div>
-
+      
+    <!-- LOBBY PLAYERS -->
       <div :if={@room.state == :lobby} class="card bg-base-100 mb-4">
         <div class="card-body">
           <h4 class="font-semibold">Players in Lobby</h4>
-          <ul>
-            <%= for {key, %{metas: metas}} <- @presences do %>
-              <li class="flex items-center gap-2 py-1">
-                <span class="badge badge-success"></span>
-                <span>{List.first(metas)[:name] || String.slice(key, 0, 6)}</span>
-              </li>
-            <% end %>
-          </ul>
+          <GameComponents.lobby_players presences={@presences} />
         </div>
       </div>
-
+      
+    <!-- ROUND -->
       <div :if={@current_round && @room.state != :ended} id="duel-round" class="space-y-4">
         <div class="card bg-base-200">
           <div class="card-body">
             <div class="text-sm opacity-70">
               Question {@current_round.number} of {@settings.rounds}
             </div>
+            
+    <!-- Round timer (unchanged so ms_remaining stays local) -->
             <div :if={@round_deadline_mono} class="text-sm space-y-1">
               <div>
                 Time left: {round(
@@ -936,33 +937,20 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               >
               </progress>
             </div>
+
             <h3 class="text-xl font-semibold">
               {@current_round.question_data[:prompt] || @current_round.question_data["prompt"] || ""}
             </h3>
 
-            <div class="mt-4 grid grid-cols-1 gap-2">
-              <button
-                :for={
-                  {choice, idx} <-
-                    Enum.with_index(
-                      @current_round.question_data[:choices] ||
-                        @current_round.question_data["choices"] || []
-                    )
-                }
-                type="button"
-                class={[
-                  "btn",
-                  @round_closed? && idx == (@reveal && @reveal.correct_index) && "btn-success",
-                  @round_closed? && @reveal && idx == @reveal.selected_index &&
-                    @reveal.selected_index != @reveal.correct_index && "btn-error"
-                ]}
-                phx-click="answer"
-                phx-value-index={idx}
-                disabled={@answered? || @round_closed?}
-              >
-                {choice}
-              </button>
-            </div>
+            <GameComponents.choices
+              choices={
+                @current_round.question_data[:choices] ||
+                  @current_round.question_data["choices"] || []
+              }
+              reveal={@reveal}
+              round_closed?={@round_closed?}
+              answered?={@answered?}
+            />
 
             <div :if={@round_closed?} class="mt-4 space-y-2">
               <div class="alert">
@@ -1046,26 +1034,29 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
             </div>
           </div>
         </div>
-
+        
+    <!-- Scoreboard -->
         <div class="card bg-base-100">
           <div class="card-body">
             <h4 class="font-semibold">Scoreboard</h4>
             <div :if={@current_user == nil} class="text-sm opacity-70">
               Sign in to play and see your score.
             </div>
-            <ul :if={@current_user != nil}>
-              <li :for={entry <- @scoreboard} class="flex justify-between">
-                <span>{Map.get(@nicknames, entry.user_id) || entry.name}</span>
-                <span class="font-semibold">{entry.score}</span>
-              </li>
-            </ul>
+            <GameComponents.scoreboard
+              :if={@current_user != nil}
+              entries={@scoreboard}
+              nicknames={@nicknames}
+            />
           </div>
         </div>
       </div>
-
+      
+    <!-- LOBBY WAIT -->
       <div :if={!@current_round && @room.state == :lobby} class="alert">
         Waiting for host to start…
       </div>
+      
+    <!-- GAME OVER -->
       <div :if={@room.state == :ended} class="space-y-4">
         <div class="alert alert-info">Game Over. {if @host?, do: "You can start a new game."}</div>
         <div class="card bg-base-100">
@@ -1083,6 +1074,38 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           </div>
         </div>
       </div>
+
+      <% inter_rem =
+        if @intermission_deadline_mono,
+          do: ms_remaining(@intermission_deadline_mono, @now_mono) || 0,
+          else: 0
+
+      inter_total = @settings.intermission_ms || 1
+      inter_val = if inter_total <= 0, do: 0, else: max(min(inter_total - inter_rem, inter_total), 0)
+      pct = if inter_total <= 0, do: 0.0, else: inter_val * 100.0 / inter_total
+      seconds_left = round(Float.ceil(inter_rem / 1000.0))
+
+      won =
+        case {@reveal && @reveal.correct?,
+              @current_user && @reveal && @reveal.user_id == @current_user.id} do
+          {true, true} -> true
+          {true, false} -> false
+          {false, true} -> false
+          {false, false} -> true
+          _ -> false
+        end %>
+
+      <GameComponents.result_overlay
+        :if={@room.state != :ended and @round_closed?}
+        won={won}
+        seconds_left={seconds_left}
+        pct={pct}
+        current_user={@current_user}
+        intermission_rid={@intermission_rid}
+        ready_user_ids={@ready_user_ids}
+        presences={@presences}
+        host?={@host?}
+      />
     </Layouts.app>
     """
   end

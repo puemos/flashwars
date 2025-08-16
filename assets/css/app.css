@@ -107,3 +107,132 @@
 }
 
 /* This file is for your main application CSS */
+
+/* Animated background + effects */
+@keyframes bg-pan {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+@keyframes pop {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    60% {
+        transform: scale(1.05);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+@keyframes float {
+    0% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-6px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+@keyframes confetti {
+    0% {
+        transform: translateY(-10vh) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(110vh) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+/* Gradient for overlay background */
+.game-gradient {
+    background:
+        radial-gradient(
+            1200px 600px at 20% 20%,
+            rgba(255, 255, 255, 0.12),
+            transparent 60%
+        ),
+        radial-gradient(
+            1200px 600px at 80% 80%,
+            rgba(255, 255, 255, 0.12),
+            transparent 60%
+        ),
+        linear-gradient(120deg, #4f46e5, #ec4899, #f59e0b);
+}
+.bg-pan {
+    background-size: 200% 200%;
+    animation: bg-pan 14s linear infinite;
+}
+
+/* Motion helpers */
+.animate-pop {
+    animation: pop 0.5s ease-out forwards;
+}
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* Glow states */
+.win-glow {
+    text-shadow:
+        0 0 12px rgba(34, 197, 94, 0.8),
+        0 0 28px rgba(34, 197, 94, 0.5);
+}
+.lose-glow {
+    text-shadow:
+        0 0 12px rgba(239, 68, 68, 0.8),
+        0 0 28px rgba(239, 68, 68, 0.5);
+}
+
+/* Progress bar driven by CSS var --pct */
+.overlay-progress {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+    backdrop-filter: blur(4px);
+}
+.overlay-progress .bar {
+    height: 100%;
+    width: var(--pct, 0%);
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 9999px;
+    transition: width 0.2s linear;
+}
+
+/* Confetti */
+.confetti {
+    position: absolute;
+    top: -10vh;
+    width: 10px;
+    height: 16px;
+    border-radius: 2px;
+    animation: confetti 2.8s linear infinite;
+}
+.confetti-0 {
+    background: #fbbf24;
+} /* amber-400 */
+.confetti-1 {
+    background: #34d399;
+} /* emerald-400 */
+.confetti-2 {
+    background: #60a5fa;
+} /* blue-400 */
+.confetti-3 {
+    background: #f472b6;
+} /* pink-400 */
+.confetti-4 {
+    background: #a78bfa;
+} /* violet-400 */
