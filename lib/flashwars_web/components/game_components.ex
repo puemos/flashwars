@@ -14,7 +14,7 @@ defmodule FlashwarsWeb.GameComponents do
     ~H"""
     <ul>
       <li :for={{key, %{metas: metas}} <- @presences} class="flex items-center gap-2 py-1">
-        <span class="badge badge-success"></span>
+        <span class="badge badge-success h-3 w-4"></span>
         <span>{List.first(metas)[:name] || String.slice(key, 0, 6)}</span>
       </li>
     </ul>
@@ -183,7 +183,12 @@ defmodule FlashwarsWeb.GameComponents do
           {Map.get(@nicknames, entry.user_id) || entry.name}
           <span :if={idx == 1} class="badge badge-success ml-1">Winner</span>
         </span>
-        <span class="font-semibold tabular-nums">{entry.score}</span>
+        <span
+          data-test-id={"score-#{Slug.slugify(Map.get(@nicknames, entry.user_id))}"}
+          class="font-semibold tabular-nums"
+        >
+          {entry.score}
+        </span>
       </li>
     </ul>
     """

@@ -69,7 +69,6 @@ defmodule FlashwarsWeb.Layouts do
         <a href={~p"/"} class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
           <span class="text-sm font-semibold">Flashwars</span>
-          <span class="badge badge-xs badge-secondary ml-1">beta</span>
         </a>
       </div>
       <div class="flex-none">

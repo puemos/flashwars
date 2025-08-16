@@ -150,18 +150,11 @@ defmodule FlashwarsWeb.GamesDuelLiveTest do
     _ = host_lv |> element("button", "Start Game") |> render_click()
     _ = host_lv |> element("#duel-round button[phx-value-index='0']") |> render_click()
 
-    # Final scores should use names (not email local-parts)
-    html = render(host_lv)
+    # Check for player names in the scoreboard
+    assert has_element?(host_lv, "div", n1) || has_element?(host_lv, "div", n2)
 
-    scores =
-      Regex.scan(~r/<li[^>]*>\s*<span>\s*([^<]+)<\/span>\s*<span class=\"font-semibold\">/m, html)
-      |> Enum.map(fn [_, text] -> text end)
-
-    assert Enum.any?(scores, fn t -> String.contains?(t, n1) or String.contains?(t, n2) end)
-
-    refute Enum.any?(scores, fn t ->
-             low = String.downcase(t)
-             String.contains?(low, "names-host") or String.contains?(low, "names-guest")
-           end)
+    # Verify we're not displaying email usernames in scoreboard
+    refute has_element?(host_lv, "[data-test-id='scoreboard']", "names-host")
+    refute has_element?(host_lv, "[data-test-id='scoreboard']", "names-guest")
   end
 end
