@@ -93,29 +93,29 @@ defmodule FlashwarsWeb.Layouts do
             </details>
           </li>
           <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
-            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Play</.link>
+            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn">Play</.link>
           </li>
           <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
             <.link
               navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"}
-              class="btn btn-ghost"
+              class="btn"
             >
               Build Set
             </.link>
           </li>
-          <li>
+          <%!-- <li>
             <.theme_toggle />
-          </li>
+          </li> --%>
           <li :if={@current_user}>
             <details class="dropdown dropdown-end">
-              <summary class="btn btn-ghost">Account</summary>
+              <summary class="btn">Account</summary>
               <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-52 p-2 shadow">
                 <li><a href={~p"/sign-out"}>Sign out</a></li>
               </ul>
             </details>
           </li>
           <li :if={!@current_user}>
-            <a href={~p"/sign-in"} class="btn btn-ghost">Sign in</a>
+            <a href={~p"/sign-in"} class="btn">Sign in</a>
           </li>
           <li :if={!@current_user}>
             <a href={~p"/register"} class="btn btn-primary">Play Now</a>

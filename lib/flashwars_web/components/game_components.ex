@@ -194,8 +194,10 @@ defmodule FlashwarsWeb.GameComponents do
     """
   end
 
-  # ========== RESULT OVERLAY (unchanged) ==========
-  attr :won, :boolean, required: true
+  # ========== RESULT OVERLAY ==========
+  # Prefer `:outcome` (:win | :lose | :draw). `:won` is kept for backward-compat.
+  attr :outcome, :atom, default: nil
+  attr :won, :boolean, default: nil
   attr :seconds_left, :integer, required: true
   attr :pct, :float, required: true
   attr :current_user, :any, default: nil
@@ -205,6 +207,15 @@ defmodule FlashwarsWeb.GameComponents do
   attr :host?, :boolean, default: false
 
   def result_overlay(assigns) do
+    assigns =
+      assign_new(assigns, :resolved_outcome, fn ->
+        cond do
+          is_atom(assigns.outcome) -> assigns.outcome
+          is_boolean(assigns.won) -> if assigns.won, do: :win, else: :lose
+          true -> :lose
+        end
+      end)
+
     ~H"""
     <div
       id="result-overlay"
@@ -216,10 +227,15 @@ defmodule FlashwarsWeb.GameComponents do
       <div class="relative z-10 mx-4 w-full max-w-4xl">
         <div class={[
           "text-center text-white text-6xl md:text-7xl font-extrabold animate-pop",
-          @won && "win-glow",
-          !@won && "lose-glow"
+          @resolved_outcome == :win && "win-glow",
+          @resolved_outcome == :lose && "lose-glow",
+          @resolved_outcome == :draw && ""
         ]}>
-          {if @won, do: "YOU WIN! 🏆", else: "YOU LOSE"}
+          {case @resolved_outcome do
+            :win -> "YOU WIN! 🏆"
+            :lose -> "YOU LOSE"
+            :draw -> "NO WINNER"
+          end}
         </div>
 
         <div class="mt-6 text-center">
@@ -269,7 +285,7 @@ defmodule FlashwarsWeb.GameComponents do
         </div>
       </div>
 
-      <div :if={@won} aria-hidden class="pointer-events-none absolute inset-0">
+      <div :if={@resolved_outcome == :win} aria-hidden class="pointer-events-none absolute inset-0">
         <div
           :for={i <- 1..36}
           class={"confetti confetti-#{rem(i,5)}"}

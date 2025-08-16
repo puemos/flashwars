@@ -31,7 +31,23 @@ defmodule Flashwars.Content.StudySet do
     end
 
     update :update do
+      require_atomic? false
       accept [:name, :description, :privacy, :folder_id]
+
+      change fn changeset, _ctx ->
+        case {Ash.Changeset.get_attribute(changeset, :privacy),
+              Ash.Changeset.get_attribute(changeset, :link_token)} do
+          {:link_only, nil} ->
+            Ash.Changeset.change_attribute(
+              changeset,
+              :link_token,
+              __MODULE__.generate_link_token()
+            )
+
+          _ ->
+            changeset
+        end
+      end
     end
 
     destroy :archive do
