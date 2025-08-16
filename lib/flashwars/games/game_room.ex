@@ -23,7 +23,7 @@ defmodule Flashwars.Games.GameRoom do
         case {Ash.Changeset.get_attribute(changeset, :organization_id),
               Ash.Changeset.get_attribute(changeset, :study_set_id)} do
           {nil, set_id} when not is_nil(set_id) ->
-            case Ash.get(Flashwars.Content.StudySet, set_id) do
+            case Ash.get(Flashwars.Content.StudySet, set_id, authorize?: false) do
               {:ok, set} ->
                 Ash.Changeset.change_attribute(changeset, :organization_id, set.organization_id)
 
@@ -74,6 +74,26 @@ defmodule Flashwars.Games.GameRoom do
       change set_attribute(:state, :ended)
       change set_attribute(:ended_at, &DateTime.utc_now/0)
     end
+
+    update :update_config do
+      require_atomic? false
+      accept [:config, :privacy]
+
+      change fn changeset, _ctx ->
+        case {Ash.Changeset.get_attribute(changeset, :privacy),
+              Ash.Changeset.get_attribute(changeset, :link_token)} do
+          {:link_only, nil} ->
+            Ash.Changeset.change_attribute(
+              changeset,
+              :link_token,
+              __MODULE__.generate_link_token()
+            )
+
+          _ ->
+            changeset
+        end
+      end
+    end
   end
 
   policies do
@@ -99,6 +119,11 @@ defmodule Flashwars.Games.GameRoom do
     # Org members can read org resources
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
+    end
+
+    # Public rooms are readable by anyone
+    policy action_type(:read) do
+      authorize_if expr(privacy == :public)
     end
 
     # Game participants can read (if applicable)

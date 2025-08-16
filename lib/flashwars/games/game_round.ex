@@ -136,6 +136,11 @@ defmodule Flashwars.Games.GameRound do
       authorize_if {Flashwars.Policies.OrgMemberRead, []}
     end
 
+    # Allow reading when parent room is public
+    policy action_type(:read) do
+      authorize_if expr(game_room.privacy == :public)
+    end
+
     # Game participants can read (if applicable)
     policy action_type(:read) do
       authorize_if {Flashwars.Policies.GameParticipantViaRoomRead, []}

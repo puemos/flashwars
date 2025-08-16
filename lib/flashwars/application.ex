@@ -17,6 +17,7 @@ defmodule Flashwars.Application do
          Application.fetch_env!(:flashwars, Oban)
        )},
       {Phoenix.PubSub, name: Flashwars.PubSub},
+      FlashwarsWeb.Presence,
       {Registry, keys: :unique, name: Flashwars.Registry},
       {DynamicSupervisor, name: Flashwars.GameTickerSupervisor, strategy: :one_for_one},
       # Start a worker by calling: Flashwars.Worker.start_link(arg)

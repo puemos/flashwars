@@ -4,6 +4,7 @@ defmodule FlashwarsWeb.OrgHomeLive do
   import Ash.Query
   alias Flashwars.Content.StudySet
   alias Flashwars.Learning.Session
+  alias Flashwars.Games
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_member}
@@ -101,6 +102,14 @@ defmodule FlashwarsWeb.OrgHomeLive do
                   >
                     Test
                   </.link>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    phx-click="create_duel"
+                    phx-value-set-id={set.id}
+                  >
+                    Create Duel
+                  </button>
                 </div>
               </li>
             </ul>
@@ -127,5 +136,19 @@ defmodule FlashwarsWeb.OrgHomeLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  def handle_event("create_duel", %{"set-id" => set_id}, socket) do
+    actor = socket.assigns.current_user
+
+    case Games.create_game_room(%{type: :duel, study_set_id: set_id, privacy: :private},
+           actor: actor
+         ) do
+      {:ok, room} ->
+        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
+
+      {:error, err} ->
+        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
+    end
   end
 end

@@ -47,9 +47,9 @@
     --color-warning-content: #301a6b; /* Dark purple text on warning */
     --color-error: #ff0013; /* Red from drawing palette */
     --color-error-content: #ffffff; /* White text on error */
-    --radius-selector: 0.25rem;
-    --radius-field: 0.25rem;
-    --radius-box: 0.5rem;
+    --radius-selector: 1rem;
+    --radius-field: 1rem;
+    --radius-box: 1rem;
     --size-selector: 0.21875rem;
     --size-field: 0.21875rem;
     --border: 1.5px;
@@ -82,9 +82,9 @@
     --color-warning-content: #301a6b; /* Dark purple text on warning */
     --color-error: #ff0013; /* Red from drawing palette */
     --color-error-content: #ffffff; /* White text on error */
-    --radius-selector: 0.25rem;
-    --radius-field: 0.25rem;
-    --radius-box: 0.5rem;
+    --radius-selector: 1rem;
+    --radius-field: 1rem;
+    --radius-box: 1rem;
     --size-selector: 0.21875rem;
     --size-field: 0.21875rem;
     --border: 1.5px;

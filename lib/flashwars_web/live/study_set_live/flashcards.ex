@@ -4,6 +4,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
   alias Flashwars.Content
   alias Flashwars.Learning
   alias Flashwars.Learning.Engine
+  alias Flashwars.Games
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_member}
@@ -71,6 +72,9 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       <.header>
         Flashcards: {@study_set.name}
         <:subtitle>Reveal the answer, then grade yourself</:subtitle>
+        <:actions>
+          <.button phx-click="create_duel" variant="primary">Create Duel</.button>
+        </:actions>
       </.header>
 
       <div class="card bg-base-200">
@@ -96,5 +100,20 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       </div>
     </Layouts.app>
     """
+  end
+
+  def handle_event("create_duel", _params, socket) do
+    actor = socket.assigns.current_user
+    set = socket.assigns.study_set
+
+    case Games.create_game_room(%{type: :duel, study_set_id: set.id, privacy: :private},
+           actor: actor
+         ) do
+      {:ok, room} ->
+        {:noreply, push_navigate(socket, to: ~p"/games/r/#{room.id}")}
+
+      {:error, err} ->
+        {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
+    end
   end
 end

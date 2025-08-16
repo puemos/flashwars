@@ -109,6 +109,10 @@ defmodule FlashwarsWeb.Router do
       auth_routes_prefix: "/auth",
       overrides: [FlashwarsWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
     )
+
+    # Game rooms (public/link/private via policies); optional auth via LiveView on_mount
+    live "/games/r/:id", GameRoomLive.Duel, :show
+    live "/games/t/:token", GameRoomLive.Duel, :token
   end
 
   # Other scopes may use custom stacks.

@@ -94,9 +94,6 @@ defmodule FlashwarsWeb.Layouts do
               </ul>
             </details>
           </li>
-          <li :if={@current_user && @orgs_count == 0}>
-            <.link navigate={~p"/orgs"} class="btn btn-ghost">Organizations</.link>
-          </li>
           <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
             <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Play</.link>
           </li>
@@ -130,7 +127,7 @@ defmodule FlashwarsWeb.Layouts do
     </header>
 
     <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+      <div class="mx-auto max-w-4xl space-y-4">
         {render_slot(@inner_block)}
       </div>
     </main>

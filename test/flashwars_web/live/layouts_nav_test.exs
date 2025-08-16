@@ -12,17 +12,6 @@ defmodule FlashwarsWeb.LayoutsNavTest do
     conn |> Phoenix.ConnTest.init_test_session(%{}) |> Plug.Conn.put_session("user_token", token)
   end
 
-  test "navbar shows Organizations link when user has 0 orgs", %{conn: conn} do
-    user = Ash.Seed.seed!(User, %{email: "nav_0_orgs@example.com"})
-    conn = sign_in(conn, user)
-
-    {:ok, lv, _html} = live(conn, ~p"/orgs")
-
-    # The navbar should show the Organizations link and hide the org switcher
-    assert has_element?(lv, "header a", "Organizations")
-    refute render(lv) =~ ">Org<"
-  end
-
   test "navbar hides Organizations link and org switcher when exactly 1 org", %{conn: conn} do
     user = Ash.Seed.seed!(User, %{email: "nav_1_org@example.com"})
     :ok = Org.ensure_default_org_for(user)
