@@ -48,12 +48,12 @@
     --color-neutral-content: #ffffff;
 
     /* Support colors – keep, or nudge towards Tailwind-friendly hues */
-    --color-info: #38bdf8; /* friendlier cyan */
-    --color-info-content: #28125b;
+    --color-info: #852c8a; /* friendlier cyan */
+    --color-info-content: #ffffff;
     --color-success: #22c55e; /* tailwind green-500 */
     --color-success-content: #ffffff;
     --color-warning: #f59e0b; /* tailwind amber-500 */
-    --color-warning-content: #28125b;
+    --color-warning-content: #ffffff;
     --color-error: #ef4444; /* tailwind red-500 */
     --color-error-content: #ffffff;
 
@@ -84,7 +84,7 @@
     --color-accent-content: #301a6b; /* Dark purple text on accent */
     --color-neutral: #aaaaaa; /* Neutral gray from drawing palette */
     --color-neutral-content: #ffffff; /* White text on neutral */
-    --color-info: #26c9ff; /* Cyan from drawing palette */
+    --color-info: #852c8a; /* Cyan from drawing palette */
     --color-info-content: #301a6b; /* Dark purple text on info */
     --color-success: #11b03c; /* Green from drawing palette */
     --color-success-content: #ffffff; /* White text on success */
