@@ -1,16 +1,58 @@
 defmodule FlashwarsWeb.LearnLiveTest do
   use FlashwarsWeb.ConnCase, async: true
 
-  import Phoenix.LiveViewTest
   alias Flashwars.Test.LearningFixtures
-
-  defp sign_in(conn, user) do
-    {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user)
-    conn |> Phoenix.ConnTest.init_test_session(%{}) |> Plug.Conn.put_session("user_token", token)
-  end
 
   setup do
     {:ok, LearningFixtures.build_set(nil)}
+  end
+
+  test "requeues incorrect answers in learn state" do
+    items = [
+      %{
+        term_id: "t1",
+        kind: "multiple_choice",
+        prompt: "Q1",
+        choices: ["a", "b", "c", "d"],
+        answer_index: 1
+      },
+      %{
+        term_id: "t2",
+        kind: "multiple_choice",
+        prompt: "Q2",
+        choices: ["a", "b", "c", "d"],
+        answer_index: 2
+      }
+    ]
+
+    state = %{
+      round_items: items,
+      round_index: 0,
+      round_number: 1,
+      round_correct_count: 0,
+      round_position: 1,
+      current_item: hd(items),
+      session_stats: %{total_correct: 0, total_questions: 0},
+      mode: :learn,
+      phase: :first_pass
+    }
+
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{
+        session_state: state,
+        answered?: false,
+        round_closed?: false,
+        study_set: %{},
+        current_user: nil,
+        __changed__: %{}
+      }
+    }
+
+    {:noreply, socket} = FlashwarsWeb.StudySetLive.Learn.handle_event("dont_know", %{}, socket)
+    {:noreply, socket} = FlashwarsWeb.StudySetLive.Learn.handle_event("dont_know", %{}, socket)
+
+    assert socket.assigns.session_state.phase == :retry
+    assert socket.assigns.session_state.current_item.term_id == "t1"
   end
 
   # test "loads learn view and shows choices; answer then next", %{
