@@ -138,6 +138,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
                   />
                 <% "matching" -> %>
                   <QC.matching
+                    id={"matching-#{@round_number}-#{@round_position}"}
                     left={@current_item[:left]}
                     right={@current_item[:right]}
                     pairs={@pairs}
@@ -590,6 +591,28 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
       {:noreply, advance_question(socket)}
     else
       {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("match_drop", %{"left_index" => li, "right_index" => ri}, socket) do
+    li = if is_integer(li), do: li, else: String.to_integer(li)
+    ri = if is_integer(ri), do: ri, else: String.to_integer(ri)
+
+    pairs = socket.assigns.pairs || []
+    used_left = MapSet.new(for p <- pairs, do: p.left_index)
+    used_right = MapSet.new(for p <- pairs, do: p.right_index)
+
+    cond do
+      socket.assigns[:answered?] || socket.assigns[:round_closed?] ->
+        {:noreply, socket}
+
+      MapSet.member?(used_left, li) or MapSet.member?(used_right, ri) ->
+        {:noreply, socket}
+
+      true ->
+        new_pair = %{left_index: li, right_index: ri}
+        {:noreply, update(socket, :pairs, fn ps -> [new_pair | ps || []] end)}
     end
   end
 

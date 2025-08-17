@@ -500,20 +500,9 @@ defmodule FlashwarsWeb.QuizComponents do
     """
   end
 
-  # ========== MATCHING ==========
-  @doc """
-  Renders a two-column matching UI.
-  Inputs mirror Engine output shape:
-  - `left`: list of `%{term_id, term}`
-  - `right`: list of definition strings
-  State from the LiveView:
-  - `pairs`: list of `%{left_index, right_index}` already matched by the user
-  - `selected_left` / `selected_right`: index currently highlighted (optional)
-  Events expected in the LiveView:
-  - `phx-click=\"match_pick\"` with `phx-value-side` ("left"|"right") and `phx-value-index`
-  - `phx-click=\"submit_matches\"` to finalize the answer
-  `reveal` may include `%{correct_pairs: [...], user_pairs: [...]}` using the same pair shape.
-  """
+  # inside your Phoenix Component module (use Phoenix.Component)
+
+  attr :id, :string, required: true
   attr :left, :list, required: true
   attr :right, :list, required: true
   attr :pairs, :list, default: []
@@ -525,90 +514,318 @@ defmodule FlashwarsWeb.QuizComponents do
   attr :rest, :global, default: %{}
 
   def matching(assigns) do
+    assigns =
+      prepare_matching(assigns)
+
     ~H"""
-    <% user_pairs = (@reveal && (@reveal[:user_pairs] || @pairs)) || @pairs %>
-    <% correct_pairs = (@reveal && (@reveal[:correct_pairs] || [])) || [] %>
-
-    <% right_used = MapSet.new(Enum.map(user_pairs, & &1.right_index)) %>
-    <% left_used = MapSet.new(Enum.map(user_pairs, & &1.left_index)) %>
-    <% correct_lookup = MapSet.new(Enum.map(correct_pairs, fn p -> {p.left_index, p.right_index} end)) %>
-
-    <div {@rest} class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <div class="uppercase text-xs opacity-70 mb-2">Terms</div>
-        <ul class="space-y-2">
-          <li :for={{item, li} <- Enum.with_index(@left)}>
-            <% matched_right =
-              Enum.find_value(user_pairs, fn p -> if p.left_index == li, do: p.right_index end) %>
-            <% is_selected = @selected_left == li %>
-            <% is_used = MapSet.member?(left_used, li) %>
-            <% result_badge =
-              if @round_closed? && matched_right != nil do
-                if MapSet.member?(correct_lookup, {li, matched_right}),
-                  do: "badge-success",
-                  else: "badge-error"
-              else
-                nil
-              end %>
-            <button
-              type="button"
-              class={[
-                "btn w-full justify-between",
-                is_selected && "btn-primary",
-                is_used && "btn-ghost"
-              ]}
-              phx-click="match_pick"
-              phx-value-side="left"
-              phx-value-index={li}
-              disabled={@answered? || @round_closed?}
-            >
-              <span class="truncate text-left">{item.term}</span>
-              <span :if={not is_nil(result_badge)} class={"badge ml-2 #{result_badge}"}>
-                {if result_badge == "badge-success", do: "✓", else: "✗"}
-              </span>
-            </button>
-          </li>
-        </ul>
+    <div
+      id={@id}
+      phx-hook="MatchingDnD"
+      data-disabled={@answered? || @round_closed?}
+      {@rest}
+      class="relative grid grid-cols-1 md:grid-cols-2 gap-20"
+    >
+      <!-- Lines layer -->
+      <svg
+        id={"#{@id}-lines"}
+        phx-hook="MatchingLines"
+        data-root-id={@id}
+        data-lines={Jason.encode!(@line_data)}
+        class="pointer-events-none absolute inset-0 z-0"
+      />
+      
+    <!-- Columns (raised above the lines) -->
+      <div class="relative z-10">
+        <.left_column
+          id_prefix={@id}
+          left={@left}
+          user_pairs={@user_pairs}
+          selected_left={@selected_left}
+          left_used={@left_used}
+          correct_lookup={@correct_lookup}
+          answered?={@answered?}
+          round_closed?={@round_closed?}
+        />
       </div>
 
-      <div>
-        <div class="uppercase text-xs opacity-70 mb-2">Definitions</div>
-        <ul class="space-y-2">
-          <li :for={{defn, ri} <- Enum.with_index(@right)}>
-            <% is_selected = @selected_right == ri %>
-            <% is_used = MapSet.member?(right_used, ri) %>
-            <button
-              type="button"
-              class={[
-                "btn w-full justify-start whitespace-normal",
-                is_selected && "btn-primary",
-                is_used && "btn-ghost"
-              ]}
-              phx-click="match_pick"
-              phx-value-side="right"
-              phx-value-index={ri}
-              disabled={@answered? || @round_closed?}
-            >
-              <span class="text-left">{defn}</span>
-            </button>
-          </li>
-        </ul>
+      <div class="relative z-10">
+        <.right_column
+          id_prefix={@id}
+          right={@right}
+          user_pairs={@user_pairs}
+          selected_right={@selected_right}
+          right_used={@right_used}
+          answered?={@answered?}
+          round_closed?={@round_closed?}
+        />
       </div>
     </div>
 
-    <div class="mt-4 flex items-center justify-between">
-      <div class="text-sm opacity-80">
-        Selected pairs: <span class="tabular-nums font-semibold">{length(user_pairs)}</span>
+    <!-- Progress + actions -->
+    <div class="mt-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm opacity-80">
+          Selected pairs: <span class="tabular-nums font-semibold">{length(@user_pairs)}</span>
+          / {@max_possible_pairs}
+        </div>
+        <button
+          type="button"
+          class="btn btn-primary"
+          phx-click="submit_matches"
+          disabled={@answered? || @round_closed? || length(@user_pairs) == 0}
+        >
+          Submit Matches
+        </button>
       </div>
+      <progress class="progress w-full" value={@progress_pct} max="100"></progress>
+    </div>
 
-      <button
-        type="button"
-        class="btn btn-primary"
-        phx-click="submit_matches"
-        disabled={@answered? || @round_closed? || length(user_pairs) == 0}
+    <!-- Chips summary -->
+    <.pairs_summary
+      left={@left}
+      right={@right}
+      user_pairs={@user_pairs}
+      correct_lookup={@correct_lookup}
+      round_closed?={@round_closed?}
+    />
+    """
+  end
+
+  defp prepare_matching(assigns) do
+    reveal = assigns.reveal || %{}
+    user_pairs = Map.get(reveal, :user_pairs, assigns.pairs || [])
+    correct_pairs = Map.get(reveal, :correct_pairs, [])
+
+    max_possible_pairs = min(length(assigns.left), length(assigns.right))
+    correct_lookup = MapSet.new(for %{left_index: l, right_index: r} <- correct_pairs, do: {l, r})
+    right_used = MapSet.new(for %{right_index: r} <- user_pairs, do: r)
+    left_used = MapSet.new(for %{left_index: l} <- user_pairs, do: l)
+
+    progress_pct =
+      if max_possible_pairs > 0 do
+        Integer.floor_div(length(user_pairs) * 100, max_possible_pairs)
+      else
+        0
+      end
+
+    line_data =
+      Enum.map(user_pairs, fn p ->
+        status =
+          if assigns.round_closed? do
+            if MapSet.member?(correct_lookup, {p.left_index, p.right_index}),
+              do: "ok",
+              else: "bad"
+          else
+            "user"
+          end
+
+        %{l: p.left_index, r: p.right_index, status: status}
+      end)
+
+    assign(assigns,
+      user_pairs: user_pairs,
+      correct_pairs: correct_pairs,
+      max_possible_pairs: max_possible_pairs,
+      right_used: right_used,
+      left_used: left_used,
+      correct_lookup: correct_lookup,
+      progress_pct: progress_pct,
+      line_data: line_data
+    )
+  end
+
+  # ---------- Private subcomponents ----------
+
+  # Left column
+  attr :id_prefix, :string, required: true
+  attr :left, :list, required: true
+  attr :user_pairs, :list, required: true
+  attr :selected_left, :integer, default: nil
+  attr :left_used, :any, required: true
+  attr :correct_lookup, :any, required: true
+  attr :answered?, :boolean, default: false
+  attr :round_closed?, :boolean, default: false
+
+  defp left_column(assigns) do
+    ~H"""
+    <div data-side="left" class="space-y-2">
+      <div class="uppercase text-xs opacity-70 mb-2">Terms</div>
+      <ul class="space-y-2">
+        <li :for={{item, index} <- Enum.with_index(@left)}>
+          <.left_item
+            id_prefix={@id_prefix}
+            item={item}
+            index={index}
+            user_pairs={@user_pairs}
+            selected_left={@selected_left}
+            left_used={@left_used}
+            correct_lookup={@correct_lookup}
+            answered?={@answered?}
+            round_closed?={@round_closed?}
+          />
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # A single left row
+  attr :id_prefix, :string, required: true
+  attr :item, :map, required: true
+  attr :index, :integer, required: true
+  attr :user_pairs, :list, required: true
+  attr :selected_left, :integer, default: nil
+  attr :left_used, :any, required: true
+  attr :correct_lookup, :any, required: true
+  attr :answered?, :boolean, default: false
+  attr :round_closed?, :boolean, default: false
+
+  defp left_item(assigns) do
+    ~H"""
+    <% matched_right =
+      Enum.find_value(@user_pairs, fn p -> if p.left_index == @index, do: p.right_index end) %>
+    <% is_selected = @selected_left == @index %>
+    <% is_used = MapSet.member?(@left_used, @index) %>
+    <% order_idx = Enum.find_index(@user_pairs, &(&1.left_index == @index)) %>
+    <% result_badge =
+      if @round_closed? && !is_nil(matched_right) do
+        if MapSet.member?(@correct_lookup, {@index, matched_right}),
+          do: "badge-success",
+          else: "badge-error"
+      else
+        nil
+      end %>
+
+    <button
+      id={"#{@id_prefix}-l-#{@index}"}
+      type="button"
+      data-index={@index}
+      data-draggable={!(@answered? || @round_closed? || is_used)}
+      class={[
+        "btn w-full border-2 border-dashed border-neutral-content/30 justify-between",
+        is_selected && "btn-primary",
+        is_used && "border-solid border-neutral-content/60",
+        !is_used && !(@answered? || @round_closed?) && "cursor-grab"
+      ]}
+      phx-value-side="left"
+      phx-value-index={@index}
+      disabled={@answered? || @round_closed?}
+      aria-grabbed="false"
+    >
+      <span class="truncate text-left">{@item.term}</span>
+
+      <span
+        :if={!is_nil(order_idx)}
+        class={[
+          "badge ml-2",
+          is_nil(result_badge) && "badge-ghost",
+          result_badge
+        ]}
       >
-        Submit Matches
-      </button>
+        {order_idx + 1}
+      </span>
+    </button>
+    """
+  end
+
+  # Right column
+  attr :id_prefix, :string, required: true
+  attr :right, :list, required: true
+  attr :user_pairs, :list, required: true
+  attr :selected_right, :integer, default: nil
+  attr :right_used, :any, required: true
+  attr :answered?, :boolean, default: false
+  attr :round_closed?, :boolean, default: false
+
+  defp right_column(assigns) do
+    ~H"""
+    <div data-side="right" class="space-y-2">
+      <div class="uppercase text-xs opacity-70 mb-2">Definitions</div>
+      <ul class="space-y-2">
+        <li :for={{defn, index} <- Enum.with_index(@right)}>
+          <.right_item
+            id_prefix={@id_prefix}
+            defn={defn}
+            index={index}
+            user_pairs={@user_pairs}
+            selected_right={@selected_right}
+            right_used={@right_used}
+            answered?={@answered?}
+            round_closed?={@round_closed?}
+          />
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # A single right row
+  attr :id_prefix, :string, required: true
+  attr :defn, :any, required: true
+  attr :index, :integer, required: true
+  attr :user_pairs, :list, required: true
+  attr :selected_right, :integer, default: nil
+  attr :right_used, :any, required: true
+  attr :answered?, :boolean, default: false
+  attr :round_closed?, :boolean, default: false
+
+  defp right_item(assigns) do
+    ~H"""
+    <% is_selected = @selected_right == @index %>
+    <% is_used = MapSet.member?(@right_used, @index) %>
+    <% order_idx = Enum.find_index(@user_pairs, &(&1.right_index == @index)) %>
+
+    <button
+      id={"#{@id_prefix}-r-#{@index}"}
+      type="button"
+      data-index={@index}
+      data-droppable={!(@answered? || @round_closed? || is_used)}
+      class={[
+        "btn w-full border-2 border-dashed border-neutral-content/30 justify-start whitespace-normal align-top",
+        is_selected && "btn-primary",
+        is_used && "border-solid border-neutral-content/60"
+      ]}
+      phx-value-side="right"
+      phx-value-index={@index}
+      disabled={@answered? || @round_closed?}
+      aria-dropeffect="link"
+    >
+      <span class="text-left flex-1">{@defn}</span>
+      <span :if={!is_nil(order_idx)} class="badge ml-2 badge-ghost">{order_idx + 1}</span>
+    </button>
+    """
+  end
+
+  # Chips summary
+  attr :left, :list, required: true
+  attr :right, :list, required: true
+  attr :user_pairs, :list, required: true
+  attr :correct_lookup, :any, required: true
+  attr :round_closed?, :boolean, default: false
+
+  defp pairs_summary(assigns) do
+    ~H"""
+    <div class="mt-3">
+      <div class="uppercase text-xs opacity-70 mb-2">Your matches</div>
+      <div class="flex flex-wrap gap-2">
+        <span
+          :for={{p, i} <- Enum.with_index(@user_pairs)}
+          class={[
+            "badge",
+            if(@round_closed?,
+              do:
+                if(MapSet.member?(@correct_lookup, {p.left_index, p.right_index}),
+                  do: "badge-success",
+                  else: "badge-error"
+                ),
+              else: "badge-ghost"
+            )
+          ]}
+        >
+          {i + 1}. {@left |> Enum.at(p.left_index) |> Map.get(:term)} → {@right
+          |> Enum.at(p.right_index)}
+        </span>
+      </div>
     </div>
     """
   end
