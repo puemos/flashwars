@@ -483,7 +483,7 @@ defmodule FlashwarsWeb.CoreComponents do
 
   def kbd(assigns) do
     ~H"""
-    <kbd class={@size}>{@text}</kbd>
+    <kbd class={[@size]}>{@text}</kbd>
     """
   end
 

@@ -680,6 +680,29 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
   end
 
   # Matching submits can reuse the same async machinery
+  defp record_review(socket, %{kind: "matching", left: terms}, correct?, answer_text)
+       when is_list(terms) do
+    grade = if correct?, do: :good, else: :again
+    user = socket.assigns.current_user
+
+    Enum.reduce(terms, socket, fn term, acc_socket ->
+      if term_id = term[:term_id] do
+        start_async(acc_socket, {:review, term_id}, fn ->
+          Learning.review(
+            user,
+            term_id,
+            grade,
+            answer: answer_text,
+            queue_type: :review,
+            timeout: @review_timeout
+          )
+        end)
+      else
+        acc_socket
+      end
+    end)
+  end
+
   defp record_review(socket, %{term_id: nil}, _correct?, _answer_text), do: socket
 
   defp record_review(socket, %{term_id: term_id}, correct?, answer_text) do
@@ -692,7 +715,8 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
         term_id,
         grade,
         answer: answer_text,
-        queue_type: :review
+        queue_type: :review,
+        timeout: @review_timeout
       )
     end)
   end

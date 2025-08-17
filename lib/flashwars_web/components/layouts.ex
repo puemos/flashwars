@@ -93,12 +93,12 @@ defmodule FlashwarsWeb.Layouts do
             </details>
           </li>
           <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
-            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn">Play</.link>
+            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Play</.link>
           </li>
           <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
             <.link
               navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"}
-              class="btn"
+              class="btn btn-ghost"
             >
               Build Set
             </.link>

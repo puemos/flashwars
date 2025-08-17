@@ -29,8 +29,8 @@
     color-scheme: "dark";
     /* Slightly deeper base to make neons pop */
     --color-base-100: #28125b; /* was #301a6b */
-    --color-base-200: #341a6d; /* was #3d247a */
-    --color-base-300: #41237d; /* was #4a2e89 */
+    --color-base-200: #3d247a; /* was #3d247a */
+    --color-base-300: #4a2e89; /* was #4a2e89 */
     --color-base-content: #ffffff;
 
     /* Brand core unchanged, but you can bump saturation if desired */
