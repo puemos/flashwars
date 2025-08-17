@@ -189,6 +189,10 @@ defmodule Flashwars.Learning.SessionManager do
     Map.update(s, :round_deferred, [item], &(&1 ++ [item]))
   end
 
+  def defer_current_item(%{phase: :retry, current_item: item} = s) do
+    Map.update(s, :retry_queue, [item], &(&1 ++ [item]))
+  end
+
   # no-op outside first pass
   def defer_current_item(s), do: s
 
