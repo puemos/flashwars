@@ -6,11 +6,6 @@ defmodule FlashwarsWeb.GamesDuelGuestNameTest do
   alias Flashwars.Accounts.User
   alias Flashwars.Org.Organization
 
-  defp sign_in(conn, user) do
-    {:ok, token, _} = AshAuthentication.Jwt.token_for_user(user)
-    conn |> Phoenix.ConnTest.init_test_session(%{}) |> Plug.Conn.put_session("user_token", token)
-  end
-
   test "anonymous can set name and it reflects in input", %{conn: conn} do
     org = Ash.Seed.seed!(Organization, %{name: "Org-GuestName"})
     host = Ash.Seed.seed!(User, %{email: "host-guest-name@example.com"})

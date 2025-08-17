@@ -86,7 +86,7 @@ defmodule FlashwarsWeb.StudySetTermsManageTest do
 
     # back to admin LV, refresh mastery and expect at least one badge present
     _ = lv |> element("button", "Refresh Expertise") |> render_click()
-    html = render(lv)
+    _html = render(lv)
 
     # assert String.contains?(html, "Mastered") or String.contains?(html, "Practicing") or
     #          String.contains?(html, "Struggling")
