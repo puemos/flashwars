@@ -419,6 +419,91 @@ defmodule FlashwarsWeb.CoreComponents do
     """
   end
 
+  # ——— Progress (overlay-style) ———
+  attr :pct, :float, required: true
+  attr :height, :string, default: "h-3"
+  attr :rounded, :boolean, default: true
+  attr :class, :any, default: nil
+
+  def progress(assigns) do
+    ~H"""
+    <div
+      class={["overlay-progress overflow-hidden", @rounded && "rounded-full", @height, @class]}
+      style={"--pct: #{@pct}%"}
+    >
+      <div class="bar"></div>
+    </div>
+    """
+  end
+
+  # ——— Stat (label + value) ———
+  attr :label, :string, required: true
+  attr :value, :any, required: true
+  # "left" | "center" | "right"
+  attr :align, :string, default: "left"
+  attr :class, :any, default: nil
+
+  def stat(assigns) do
+    align_class =
+      case assigns.align do
+        "center" -> "text-center"
+        "right" -> "text-right"
+        _ -> ""
+      end
+
+    assigns = assign(assigns, :align_class, align_class)
+
+    ~H"""
+    <div class={["text-sm opacity-90", @align_class, @class]}>
+      <div class="uppercase text-xs">{@label}</div>
+      <div class="font-extrabold tabular-nums">{@value}</div>
+    </div>
+    """
+  end
+
+  # ——— Sticky top wrapper ———
+  slot :inner_block, required: true
+  attr :class, :any, default: nil
+
+  def sticky_top(assigns) do
+    ~H"""
+    <div class={["sticky top-0 z-30", @class]}>
+      <div class="relative border-b border-base-300">
+        <div class="relative mx-auto max-w-6xl px-4 py-3">
+          {render_slot(@inner_block)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ——— Keyboard badge ———
+  attr :text, :string, required: true
+  attr :size, :string, default: "kbd kbd-lg"
+
+  def kbd(assigns) do
+    ~H"""
+    <kbd class={@size}>{@text}</kbd>
+    """
+  end
+
+  # ——— Rank badge (1..n) ———
+  attr :index, :integer, required: true
+
+  def rank_badge(assigns) do
+    ~H"""
+    <span class={[
+      "badge",
+      @index == 1 && "badge-warning",
+      @index == 2 && "badge-info",
+      @index == 3 && "badge-secondary",
+      @index > 3 && "badge-ghost"
+    ]}>
+      {@index}
+    </span>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

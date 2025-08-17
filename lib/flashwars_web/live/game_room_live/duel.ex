@@ -8,7 +8,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   alias Flashwars.Games.{GameRoom, GameSubmission}
   alias FlashwarsWeb.Presence
 
-  alias FlashwarsWeb.GameComponents
+  alias FlashwarsWeb.QuizComponents
 
   @topic_prefix "flash_wars:room:"
 
@@ -952,7 +952,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
         else
           nil
         end %>
-      <GameComponents.hud
+      <QuizComponents.hud
         :if={@current_round && @room.state != :ended}
         round={@current_round.number}
         rounds={@settings.rounds}
@@ -1073,7 +1073,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       <div :if={@room.state == :lobby} class="card bg-base-100 mb-4">
         <div class="card-body">
           <h4 class="font-semibold">Players in Lobby</h4>
-          <GameComponents.lobby_players presences={@presences} />
+          <QuizComponents.lobby_players presences={@presences} />
         </div>
       </div>
 
@@ -1088,7 +1088,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               {@current_round.question_data[:prompt] || @current_round.question_data["prompt"] || ""}
             </h3>
 
-            <GameComponents.choices
+            <QuizComponents.choices
               choices={
                 @current_round.question_data[:choices] || @current_round.question_data["choices"] ||
                   []
@@ -1106,7 +1106,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
             <div :if={@current_user == nil} class="text-sm opacity-70">
               Sign in to play and see your score.
             </div>
-            <GameComponents.scoreboard
+            <QuizComponents.scoreboard
               :if={@current_user != nil}
               entries={@scoreboard}
               nicknames={@nicknames}
@@ -1126,7 +1126,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
         <div class="card bg-base-100">
           <div class="card-body">
             <h4 class="font-semibold">Final Scores</h4>
-            <GameComponents.scoreboard
+            <QuizComponents.scoreboard
               entries={@final_scoreboard || @scoreboard}
               nicknames={@nicknames}
             />
@@ -1160,7 +1160,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               do: :win,
               else: :lose
         end %>
-      <GameComponents.result_overlay
+      <QuizComponents.result_overlay
         :if={@room.state != :ended and @round_closed?}
         outcome={outcome}
         seconds_left={overlay_secs}
