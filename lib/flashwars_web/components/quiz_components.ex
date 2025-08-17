@@ -9,6 +9,101 @@ defmodule FlashwarsWeb.QuizComponents do
 
   import FlashwarsWeb.CoreComponents
 
+  # ————————————————————————————————————————————————————————————————
+  # Components
+  # ————————————————————————————————————————————————————————————————
+
+  # Inputs
+  # total segments
+  attr :chunks, :integer, required: true
+  # units per segment
+  attr :chunk_size, :integer, required: true
+  # active segment index (1..chunks)
+  attr :chunk, :integer, required: true
+  # position within active segment
+  attr :offset, :integer, required: true
+
+  attr :label, :any
+  attr :id, :string, default: nil
+
+  def segment_track(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:label, fn -> nil end)
+
+    chunks = max(assigns[:chunks] || 1, 1)
+    chunk_size = assigns[:chunk_size] || 0
+    chunk = assigns[:chunk] |> max(1) |> min(chunks)
+    offset = assigns[:offset] |> max(0) |> min(chunk_size)
+
+    pct = if chunk_size > 0, do: offset / chunk_size * 100.0, else: 0.0
+    done = max(chunk - 1, 0)
+    todo = max(chunks - chunk, 0)
+    badge_left = if chunks > 0, do: (chunk - 1 + pct / 100.0) / chunks * 100.0, else: 0.0
+
+    base_id = assigns[:id] || "segtrack-#{chunks}-#{chunk_size}"
+
+    assigns =
+      assign(assigns,
+        chunks: chunks,
+        chunk_size: chunk_size,
+        chunk: chunk,
+        offset: offset,
+        pct: Float.round(pct, 2),
+        done: done,
+        todo: todo,
+        badge_left: Float.round(badge_left, 2),
+        base_id: base_id,
+        # Roll when THIS value changes. Use label by default:
+        label_key: :erlang.phash2(assigns[:label])
+        # If you prefer roll on progress instead, use:
+        # label_key: :erlang.phash2({chunk, offset})
+      )
+
+    ~H"""
+    <div class="relative flex w-full items-center gap-2 select-none">
+      <div class="relative flex gap-2 w-full">
+        <!-- completed -->
+        <div
+          :for={_ <- 1..@done}
+          :if={@done > 0}
+          class="relative h-4 flex-1 rounded-full bg-slate-600"
+        >
+          <div class="absolute inset-0 rounded-full bg-emerald-500"></div>
+        </div>
+        
+    <!-- current -->
+        <div class="relative h-4 flex-1 rounded-full bg-slate-600 overflow-visible">
+          <div
+            class="absolute left-0 top-0 h-full rounded-full bg-emerald-500 transition-all duration-300"
+            style={"width: #{@pct}%"}
+          />
+        </div>
+        
+    <!-- upcoming -->
+        <div :for={_ <- 1..@todo} class="relative h-4 flex-1 rounded-full bg-slate-600"></div>
+        
+    <!-- badge across full track -->
+        <div
+          :if={not is_nil(@label)}
+          id={"#{@base_id}-badge"}
+          class="transition-all absolute -top-2 w-8 h-8 rounded-full bg-emerald-500 text-white text-base font-bold flex items-center justify-center pointer-events-none overflow-hidden"
+          style={"left: #{@badge_left}%; transform: translateX(-50%);"}
+          phx-update="replace"
+        >
+          <!-- Replace this child ONLY when the watched value changes -->
+          <span
+            id={"#{@base_id}-label-#{@label_key}"}
+            class="block leading-none animate-roll-up"
+          >
+            {@label}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   # ========== LOBBY ==========
   attr :presences, :map, required: true
 
@@ -382,7 +477,7 @@ defmodule FlashwarsWeb.QuizComponents do
           name="answer[text]"
           value={@user_text}
           placeholder={@placeholder}
-          class="input input-bordered w-full"
+          class="input input-bordered w-full y-2"
           disabled={@answered? || @round_closed?}
           autocomplete="off"
         />

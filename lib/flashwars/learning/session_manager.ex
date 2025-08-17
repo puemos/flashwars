@@ -68,6 +68,63 @@ defmodule Flashwars.Learning.SessionManager do
     end
   end
 
+  def advance_session(%{phase: :first_pass, round_index: idx, round_items: items} = s) do
+    cond do
+      idx + 1 < length(items) ->
+        next = idx + 1
+
+        new =
+          s
+          |> Map.put(:round_index, next)
+          |> Map.put(:round_position, next + 1)
+          |> Map.put(:current_item, Enum.at(items, next))
+
+        {:advance_in_round, new}
+
+      true ->
+        # end of first pass
+        case Map.get(s, :round_deferred, []) do
+          [] ->
+            {:start_new_round, s}
+
+          retry when is_list(retry) ->
+            # enter retry phase; keep denominator fixed and pin position at total
+            new =
+              s
+              |> Map.put(:phase, :retry)
+              |> Map.put(:retry_queue, retry)
+              |> Map.put(:retry_index, 0)
+              |> Map.put(:round_deferred, [])
+              |> Map.put(:round_position, length(items))
+              # keep track pinned at end
+              |> Map.put(:round_index, max(length(items) - 1, 0))
+              |> Map.put(:current_item, hd(retry))
+
+            {:advance_in_round, new}
+        end
+    end
+  end
+
+  def advance_session(%{phase: :retry, retry_index: i, retry_queue: rq} = s) do
+    if i + 1 < length(rq) do
+      new =
+        s
+        |> Map.put(:retry_index, i + 1)
+        |> Map.put(:current_item, Enum.at(rq, i + 1))
+
+      {:advance_in_round, new}
+    else
+      # finished retries; hand back to caller to start a *new* round
+      clean =
+        s
+        |> Map.put(:phase, :first_pass)
+        |> Map.delete(:retry_queue)
+        |> Map.delete(:retry_index)
+
+      {:start_new_round, clean}
+    end
+  end
+
   @spec advance_session(session_state()) :: progression_result()
   def advance_session(state) do
     %{round_items: items, round_index: idx, round_position: pos} = state
@@ -127,6 +184,13 @@ defmodule Flashwars.Learning.SessionManager do
   def mark_answer_correct(state) do
     %{state | round_correct_count: state.round_correct_count + 1}
   end
+
+  def defer_current_item(%{phase: :first_pass, current_item: item} = s) do
+    Map.update(s, :round_deferred, [item], &(&1 ++ [item]))
+  end
+
+  # no-op outside first pass
+  def defer_current_item(s), do: s
 
   # ————————————————————————————————————————————————————————————————
   # Progress Calculations

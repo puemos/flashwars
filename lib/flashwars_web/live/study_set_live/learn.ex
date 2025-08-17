@@ -13,57 +13,10 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
 
   # Configuration constants
   @review_timeout 5_000
-  @segment_window 3
 
   # Type definitions for better documentation
   @type question_kind :: :multiple_choice | :true_false | :free_text | :matching
   @type interaction_state :: :idle | :wrong_attempt | :wrong_closed | :correct
-
-  # ————————————————————————————————————————————————————————————————
-  # Components
-  # ————————————————————————————————————————————————————————————————
-
-  attr :current_round, :integer, required: true
-  attr :badge_value, :integer, required: true
-  attr :fill_pct, :float, required: true
-  attr :window, :integer, default: @segment_window
-  attr :score, :string, default: nil
-
-  defp progress_segments(assigns) do
-    ~H"""
-    <div class="relative flex items-center gap-2 select-none">
-      <div class="flex gap-2">
-        <% left_count = if @current_round > 1, do: 1, else: 0 %>
-        <% right_count = max(@window - 1 - left_count, 0) %>
-        
-    <!-- Completed rounds -->
-        <div :for={_ <- 1..left_count//1} class="relative h-2 w-24 rounded-full bg-slate-600">
-          <div class="absolute inset-0 rounded-full bg-green-500"></div>
-        </div>
-        
-    <!-- Current round with progress -->
-        <div class="relative h-2 w-24 rounded-full bg-slate-600 overflow-visible">
-          <div
-            class="absolute left-0 top-0 h-full rounded-full bg-green-500 transition-all duration-300"
-            style={"width: #{@fill_pct}%"}
-          >
-          </div>
-          <!-- Badge showing current question number -->
-          <div class="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-green-500 text-slate-900 text-xs font-bold flex items-center justify-center">
-            {@badge_value}
-          </div>
-        </div>
-        
-    <!-- Future rounds -->
-        <div :for={_ <- 1..right_count} class="relative h-2 w-24 rounded-full bg-slate-600"></div>
-      </div>
-
-      <div :if={@score} class="ml-auto px-3 py-1 rounded-full bg-slate-700 text-slate-200 text-sm">
-        {@score}
-      </div>
-    </div>
-    """
-  end
 
   # ————————————————————————————————————————————————————————————————
   # Main Render
@@ -99,14 +52,15 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           <div class="loading loading-spinner loading-lg"></div>
         </div>
 
-        <div :if={@session_state} id="learn-panel" class="space-y-4" phx-window-keydown="any_key">
+        <div :if={@session_state} id="learn-panel" class="space-y-6" phx-window-keydown="any_key">
           <!-- Progress visualization -->
-          <div class="mt-2">
-            <.progress_segments
-              current_round={@round_number}
-              badge_value={@round_position}
-              fill_pct={round_fill_percentage(assigns)}
-              score={"#{calculate_session_accuracy(@session_stats)}%"}
+          <div class="mt-2 px-4 pb-2">
+            <QC.segment_track
+              chunks={3}
+              chunk_size={length(@round_items)}
+              chunk={if @round_number > 0, do: 1, else: 0}
+              offset={@round_correct_count}
+              label={@round_position}
             />
           </div>
 
@@ -213,64 +167,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
               
     <!-- Feedback and continue section -->
               <div :if={@answered?} class="mt-4 space-y-3">
-                <div :if={@correct?} class="alert alert-success">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="stroke-current shrink-0 h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>Correct!</span>
-                </div>
-
-                <div
-                  :if={not @correct? and @current_item[:kind] in ["multiple_choice", "true_false"]}
-                  class="alert alert-error"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="stroke-current shrink-0 h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>Incorrect.</span>
-                </div>
-
-                <div
-                  :if={not @correct? and @current_item[:kind] == "free_text"}
-                  class="alert alert-error"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="stroke-current shrink-0 h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>Incorrect. Answer: {@current_item[:answer_text]}</span>
-                </div>
-
-                <.button id="next-btn" class="btn-primary" phx-click="next">
+                <.button id="next-btn" phx-click="next">
                   Continue
                 </.button>
               </div>
@@ -329,7 +226,6 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
        case SessionManager.initialize_session(user, set_id, :learn) do
          {:ok, state} -> {:ok, state}
          {:error, :no_items} -> {:ok, create_empty_session()}
-         {:error, reason} -> {:error, reason}
        end
      end)}
   end
@@ -358,15 +254,19 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     {:noreply, socket}
   end
 
-  # Keep this for backward-compat in case anything still sends this message
-  def handle_info({:review_complete, term_id, result}, socket) do
-    Phoenix.PubSub.broadcast(
-      Flashwars.PubSub,
-      "user:#{socket.assigns.current_user.id}",
-      {:learning_progress, term_id, result}
-    )
+  @impl true
+  def handle_info({:auto_next, round_no, round_pos, round_idx}, socket) do
+    same_question? =
+      socket.assigns.round_number == round_no and
+        socket.assigns.round_position == round_pos and
+        socket.assigns.round_index == round_idx
 
-    {:noreply, socket}
+    if same_question? and socket.assigns[:answered?] and socket.assigns[:correct?] and
+         is_nil(socket.assigns[:last_wrong_index]) do
+      {:noreply, advance_question(socket)}
+    else
+      {:noreply, socket}
+    end
   end
 
   # ————————————————————————————————————————————————————————————————
@@ -429,9 +329,21 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     |> assign(:round_index, session_state[:round_index])
     |> assign(:round_number, session_state[:round_number])
     |> assign(:round_correct_count, session_state[:round_correct_count])
-    |> assign(:round_position, session_state[:round_position])
+    |> assign(:round_position, ui_round_position(session_state))
     |> assign(:current_item, session_state[:current_item])
     |> assign(:session_stats, session_state[:session_stats])
+  end
+
+  defp ui_round_position(%{round_items: items, round_correct_count: n}) do
+    total = length(items || [])
+    pos = n + 1
+
+    cond do
+      total <= 0 -> 0
+      pos > total -> total
+      pos < 1 -> 1
+      true -> pos
+    end
   end
 
   defp assign_empty_session_ui(socket) do
@@ -475,9 +387,17 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
   end
 
   defp advance_question(socket) do
-    session_state = socket.assigns.session_state
+    session_state0 = socket.assigns.session_state
 
-    case SessionManager.advance_session(session_state) do
+    # Defer progress increment until navigation time
+    session_state1 =
+      if socket.assigns[:answered?] && socket.assigns[:correct?] do
+        SessionManager.mark_answer_correct(session_state0)
+      else
+        session_state0
+      end
+
+    case SessionManager.advance_session(session_state1) do
       {:advance_in_round, new_state} ->
         socket
         |> assign(:session_state, new_state)
@@ -519,7 +439,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
       answer_text = Enum.at(choices, idx, "")
       correct? = idx == item.answer_index
 
-      # Update session state
+      # Update session stats only
       session_state =
         socket.assigns.session_state
         |> SessionManager.update_session_stats(correct?)
@@ -556,10 +476,13 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
 
       socket = record_review_async(socket, item, correct?, user_text)
 
-      # Update session state
       session_state =
         socket.assigns.session_state
         |> SessionManager.update_session_stats(correct?)
+
+      # Defer if wrong on first pass
+      session_state =
+        if correct?, do: session_state, else: SessionManager.defer_current_item(session_state)
 
       socket =
         socket
@@ -606,10 +529,13 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
 
       socket = record_review(socket, item, correct?, inspect(user_pairs_reversed))
 
-      # Update session state
       session_state =
         socket.assigns.session_state
         |> SessionManager.update_session_stats(correct?)
+
+      # Defer if wrong on first pass
+      session_state =
+        if correct?, do: session_state, else: SessionManager.defer_current_item(session_state)
 
       socket =
         socket
@@ -654,7 +580,8 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
 
   @impl true
   def handle_event("dont_know", _params, socket) do
-    {:noreply, advance_question(socket)}
+    session_state = SessionManager.defer_current_item(socket.assigns.session_state)
+    {:noreply, socket |> assign(:session_state, session_state) |> advance_question()}
   end
 
   @impl true
@@ -674,21 +601,36 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           Phoenix.LiveView.Socket.t()
   defp handle_answer_result(socket, item, correct?, answer_text, selected_idx) do
     socket = record_review_async(socket, item, correct?, answer_text)
+    first_attempt? = is_nil(socket.assigns[:last_wrong_index])
 
     if correct? do
-      # Update session state with correct answer
-      session_state = SessionManager.mark_answer_correct(socket.assigns.session_state)
-
+      # Do not bump round_correct_count here
       socket =
         socket
-        |> assign(:session_state, session_state)
-        |> assign(:round_correct_count, session_state.round_correct_count)
+        |> assign(:answered?, true)
+        |> assign(:correct?, true)
         |> assign(:last_wrong_index, nil)
+        |> assign(:reveal, %{selected_index: selected_idx, correct_index: item.answer_index})
 
-      advance_question(socket)
-    else
+      if first_attempt? do
+        Process.send_after(
+          self(),
+          {:auto_next, socket.assigns.round_number, socket.assigns.round_position,
+           socket.assigns.round_index},
+          5_000
+        )
+      end
+
       socket
+    else
+      # Wrong on first pass -> defer this item to end of round and move on (after Continue)
+      session_state = SessionManager.defer_current_item(socket.assigns.session_state)
+
+      socket
+      |> assign(:session_state, session_state)
       |> assign(:last_wrong_index, selected_idx)
+      |> assign(:answered?, true)
+      |> assign(:correct?, false)
       |> assign(:reveal, %{selected_index: selected_idx, correct_index: item.answer_index})
     end
   end
@@ -736,11 +678,6 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
   # View Helpers
   # ————————————————————————————————————————————————————————————————
 
-  @spec round_fill_percentage(map()) :: float()
-  defp round_fill_percentage(assigns) do
-    SessionManager.calculate_round_progress(assigns.session_state)
-  end
-
   @spec prompt_label(map()) :: String.t()
   defp prompt_label(%{kind: kind}) when kind in ["multiple_choice", "true_false"], do: "Term"
   defp prompt_label(_), do: "Definition"
@@ -756,12 +693,6 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
       not is_nil(wrong_idx) -> :wrong_attempt
       true -> :idle
     end
-  end
-
-  defp calculate_session_accuracy(%{total_questions: 0}), do: 0
-
-  defp calculate_session_accuracy(%{total_correct: correct, total_questions: total}) do
-    SessionManager.calculate_session_accuracy(%{total_correct: correct, total_questions: total})
   end
 
   defp maybe_create_match_pair(socket) do
