@@ -683,7 +683,7 @@ defmodule Flashwars.Learning.Engine do
 
     item = %{
       kind: "true_false",
-      prompt: "#{target_term.term} — matches definition?",
+      prompt: "#{target_term.term}",
       definition: definition,
       choices: ["True", "False"],
       answer_index: answer_index,

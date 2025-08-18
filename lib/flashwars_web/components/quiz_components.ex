@@ -399,6 +399,11 @@ defmodule FlashwarsWeb.QuizComponents do
           tabindex={if @locked?, do: "-1"}
           phx-click={if @locked?, do: nil, else: "answer"}
           phx-value-index={if @locked?, do: nil, else: choice_item.idx}
+          phx-window-keyup={
+            unless @locked?,
+              do: "answer"
+          }
+          phx-key={choice_item.idx + 1}
         >
           <.kbd text={choice_item.letter} />
           <span class="font-semibold flex-1 text-left">{choice_item.choice}</span>
@@ -563,11 +568,7 @@ defmodule FlashwarsWeb.QuizComponents do
 
     <!-- Progress + actions -->
     <div class="mt-4">
-      <div class="flex items-center justify-between mb-2">
-        <div class="text-sm opacity-80">
-          Selected pairs: <span class="tabular-nums font-semibold">{length(@user_pairs)}</span>
-          / {@max_possible_pairs}
-        </div>
+      <div class="flex flex-row-reverse items-center justify-between mb-2">
         <button
           type="button"
           class="btn btn-primary"
@@ -577,17 +578,7 @@ defmodule FlashwarsWeb.QuizComponents do
           Submit Matches
         </button>
       </div>
-      <progress class="progress w-full" value={@progress_pct} max="100"></progress>
     </div>
-
-    <!-- Chips summary -->
-    <.pairs_summary
-      left={@left}
-      right={@right}
-      user_pairs={@user_pairs}
-      correct_lookup={@correct_lookup}
-      round_closed?={@round_closed?}
-    />
     """
   end
 
@@ -793,40 +784,6 @@ defmodule FlashwarsWeb.QuizComponents do
       <span class="text-left flex-1">{@defn}</span>
       <span :if={!is_nil(order_idx)} class="badge ml-2 badge-ghost">{order_idx + 1}</span>
     </button>
-    """
-  end
-
-  # Chips summary
-  attr :left, :list, required: true
-  attr :right, :list, required: true
-  attr :user_pairs, :list, required: true
-  attr :correct_lookup, :any, required: true
-  attr :round_closed?, :boolean, default: false
-
-  defp pairs_summary(assigns) do
-    ~H"""
-    <div class="mt-3">
-      <div class="uppercase text-xs opacity-70 mb-2">Your matches</div>
-      <div class="flex flex-wrap gap-2">
-        <span
-          :for={{p, i} <- Enum.with_index(@user_pairs)}
-          class={[
-            "badge",
-            if(@round_closed?,
-              do:
-                if(MapSet.member?(@correct_lookup, {p.left_index, p.right_index}),
-                  do: "badge-success",
-                  else: "badge-error"
-                ),
-              else: "badge-ghost"
-            )
-          ]}
-        >
-          {i + 1}. {@left |> Enum.at(p.left_index) |> Map.get(:term)} → {@right
-          |> Enum.at(p.right_index)}
-        </span>
-      </div>
-    </div>
     """
   end
 end

@@ -52,7 +52,12 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           <div class="loading loading-spinner loading-lg"></div>
         </div>
 
-        <div :if={@session_state} id="learn-panel" class="space-y-6" phx-window-keydown="any_key">
+        <div
+          :if={@session_state}
+          id="learn-panel"
+          class="space-y-6"
+          phx-window-keydown={if @answered?, do: "any_key"}
+        >
           <!-- Progress visualization -->
           <div class="mt-2 px-4 pb-2">
             <QC.segment_track
@@ -88,7 +93,18 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
               <div class="mt-3 min-h-[28px]">
                 <%= case interaction_state(assigns) do %>
                   <% :idle -> %>
-                    <div class="text-sm opacity-70">Choose an answer</div>
+                    <%= case @current_item[:kind] do %>
+                      <% "multiple_choice" -> %>
+                        <div class="text-sm opacity-70">Select one of the options</div>
+                      <% "true_false" -> %>
+                        <div class="text-sm opacity-70">Choose True or False</div>
+                      <% "free_text" -> %>
+                        <div class="text-sm opacity-70">Type your answer</div>
+                      <% "matching" -> %>
+                        <div class="text-sm opacity-70">Match each item to its pair</div>
+                      <% _ -> %>
+                        <div class="h-28 rounded-xl bg-base-300/40 animate-pulse"></div>
+                    <% end %>
                   <% :wrong_attempt -> %>
                     <div class="text-sm text-orange-300">
                       Not quite. Try again, or <button
@@ -99,12 +115,13 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
                         </button>.
                     </div>
                   <% :wrong_closed -> %>
-                    <div class="text-sm text-orange-300">
-                      Incorrect — press Continue or any key to move on.
+                    <div class="inline-flex items-center gap-2 text-sm text-orange-300">
+                      <span>🙅</span>
+                      <span>Incorrect — press Continue or any key to move on.</span>
                     </div>
                   <% :correct -> %>
                     <div class="inline-flex items-center gap-2 text-sm text-green-300">
-                      <span>👋</span>
+                      <span>🏆</span>
                       <span>You're really getting this!</span>
                     </div>
                 <% end %>
