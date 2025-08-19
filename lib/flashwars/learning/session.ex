@@ -5,6 +5,8 @@ defmodule Flashwars.Learning.Session do
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
+  alias Flashwars.Learning.SessionState
+
   postgres do
     table "sessions"
     repo Flashwars.Repo
@@ -51,6 +53,12 @@ defmodule Flashwars.Learning.Session do
 
       prepare build(sort: [updated_at: :desc])
     end
+
+    # Add action for cleaning up old sessions
+    read :stale_sessions do
+      argument :older_than, :utc_datetime, allow_nil?: false
+      filter expr(updated_at < ^arg(:older_than))
+    end
   end
 
   policies do
@@ -69,7 +77,7 @@ defmodule Flashwars.Learning.Session do
       authorize_if relates_to_actor_via(:user)
     end
 
-    # Org members can upsert their own sessions for sets in their org; admins also allowed
+    # Org members can upsert their own sessions for sets in their org
     policy action_type(:create) do
       authorize_if {Flashwars.Policies.OrgMemberViaStudySetCreate, []}
       authorize_if {Flashwars.Policies.OrgAdminCreate, []}
@@ -88,7 +96,8 @@ defmodule Flashwars.Learning.Session do
       constraints: [one_of: [:flashcards, :learn, :test]],
       allow_nil?: false
 
-    attribute :state, :map, default: %{}
+    attribute :state, SessionState, allow_nil?: false
+
     attribute :last_saved_at, :utc_datetime
     attribute :organization_id, :uuid
     create_timestamp :inserted_at
@@ -103,5 +112,9 @@ defmodule Flashwars.Learning.Session do
 
   identities do
     identity :by_user_set_mode, [:user_id, :study_set_id, :mode]
+  end
+
+  def default_state(mode \\ :learn) do
+    Flashwars.Learning.SessionState.new!(%{mode: mode})
   end
 end

@@ -1,59 +1,45 @@
 defmodule Flashwars.Learning.SessionManager do
   @moduledoc """
-  Manages learning session state and persistence for study sessions.
+  Core session business logic for learning modes.
 
-  Handles session lifecycle, progression logic, and state persistence
-  for different learning modes like flashcards, learn, and test.
+  This module focuses purely on session state transitions and logic,
+  without UI concerns or LiveView-specific functionality.
   """
 
+  alias Flashwars.Learning.SessionState
   alias Flashwars.Learning
   alias Flashwars.Learning.Engine
   require Ash.Query
 
-  @recent_window :timer.hours(24)
-
-  # Configuration constants
-  @round_size 10
-  @match_pairs 4
-
   # Type definitions
-  @type session_state :: %{
-          round_items: list(),
-          round_index: integer(),
-          round_number: integer(),
-          round_correct_count: integer(),
-          round_position: integer(),
-          current_item: map() | nil,
-          session_stats: map(),
-          mode: atom()
-        }
+  @type session_state :: Flashwars.Learning.SessionState.t()
 
   @type progression_result ::
           {:advance_in_round, session_state()}
           | {:start_new_round, session_state()}
           | {:session_complete, session_state()}
 
-  # ————————————————————————————————————————————————————————————————
-  # Session Lifecycle
-  # ————————————————————————————————————————————————————————————————
+  # Configuration
+  @recent_window_hours 24
+  @default_round_size 10
+  @default_match_pairs 4
 
-  @spec initialize_session(map(), String.t(), atom()) :: {:ok, session_state()} | {:error, atom()}
-  def initialize_session(user, study_set_id, mode \\ :learn) do
-    # Try to resume existing session first
-    case resume_session(user, study_set_id, mode) do
-      {:ok, state} -> {:ok, state}
-      {:error, :no_session} -> create_new_session(user, study_set_id, mode)
-    end
-  end
+  # ========================================
+  # Session Lifecycle - Core Logic Only
+  # ========================================
 
-  @spec create_new_session(map(), String.t(), atom()) :: {:ok, session_state()} | {:error, atom()}
-  def create_new_session(user, study_set_id, mode) do
-    case generate_learn_items(user, study_set_id) do
+  @spec create_session(map(), String.t(), atom(), keyword()) ::
+          {:ok, session_state()} | {:error, atom()}
+  def create_session(user, study_set_id, mode, opts \\ []) do
+    size = Keyword.get(opts, :size, @default_round_size)
+    pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
+
+    case generate_items_for_mode(user, study_set_id, mode, size: size, pair_count: pair_count) do
       [] ->
         {:error, :no_items}
 
       items ->
-        state = %{
+        state = %SessionState{
           round_items: items,
           round_index: 0,
           round_number: 1,
@@ -61,95 +47,75 @@ defmodule Flashwars.Learning.SessionManager do
           round_position: 1,
           current_item: List.first(items),
           session_stats: %{total_correct: 0, total_questions: 0},
-          mode: mode
+          mode: mode,
+          phase: :first_pass
         }
 
         {:ok, state}
     end
   end
 
-  def advance_session(%{phase: :first_pass, round_index: idx, round_items: items} = s) do
-    cond do
-      idx + 1 < length(items) ->
-        next = idx + 1
-
-        new =
-          s
-          |> Map.put(:round_index, next)
-          |> Map.put(:round_position, next + 1)
-          |> Map.put(:current_item, Enum.at(items, next))
-
-        {:advance_in_round, new}
-
-      true ->
-        # end of first pass
-        case Map.get(s, :round_deferred, []) do
-          [] ->
-            {:start_new_round, s}
-
-          retry when is_list(retry) ->
-            # enter retry phase; keep denominator fixed and pin position at total
-            new =
-              s
-              |> Map.put(:phase, :retry)
-              |> Map.put(:retry_queue, retry)
-              |> Map.put(:retry_index, 0)
-              |> Map.put(:round_deferred, [])
-              |> Map.put(:round_position, length(items))
-              # keep track pinned at end
-              |> Map.put(:round_index, max(length(items) - 1, 0))
-              |> Map.put(:current_item, hd(retry))
-
-            {:advance_in_round, new}
-        end
+  @spec load_or_create_session(map(), String.t(), atom(), keyword()) ::
+          {:ok, session_state()} | {:error, atom()}
+  def load_or_create_session(user, study_set_id, mode, opts \\ []) do
+    case load_recent_session(user, study_set_id, mode) do
+      {:ok, state} -> {:ok, state}
+      {:error, _} -> create_session(user, study_set_id, mode, opts)
     end
   end
 
-  def advance_session(%{phase: :retry, retry_index: i, retry_queue: rq} = s) do
-    if i + 1 < length(rq) do
-      new =
-        s
-        |> Map.put(:retry_index, i + 1)
-        |> Map.put(:current_item, Enum.at(rq, i + 1))
-
-      {:advance_in_round, new}
-    else
-      # finished retries; hand back to caller to start a *new* round
-      clean =
-        s
-        |> Map.put(:phase, :first_pass)
-        |> Map.delete(:retry_queue)
-        |> Map.delete(:retry_index)
-
-      {:start_new_round, clean}
-    end
-  end
+  # ========================================
+  # State Transitions
+  # ========================================
 
   @spec advance_session(session_state()) :: progression_result()
-  def advance_session(state) do
-    %{round_items: items, round_index: idx, round_position: pos} = state
-    new_idx = idx + 1
+  def advance_session(%{phase: :first_pass} = state) do
+    %{round_index: idx, round_items: items} = state
 
-    if new_idx < length(items) do
-      # Advance within current round
+    cond do
+      idx + 1 < length(items) ->
+        {:advance_in_round, advance_to_next_item(state)}
+
+      Map.get(state, :round_deferred, []) == [] ->
+        {:start_new_round, state}
+
+      true ->
+        {:advance_in_round, enter_retry_phase(state)}
+    end
+  end
+
+  def advance_session(%{phase: :retry} = state) do
+    %{retry_index: i, retry_queue: queue} = state
+
+    if i + 1 < length(queue) do
       new_state = %{
         state
-        | round_index: new_idx,
-          round_position: pos + 1,
-          current_item: Enum.at(items, new_idx)
+        | retry_index: i + 1,
+          current_item: Enum.at(queue, i + 1)
       }
 
       {:advance_in_round, new_state}
     else
-      # Start new round
-      {:start_new_round, state}
+      clean_state =
+        %{
+          state
+          | phase: :first_pass
+        }
+        |> Map.delete(:retry_queue)
+        |> Map.delete(:retry_index)
+
+      {:start_new_round, clean_state}
     end
   end
 
-  @spec start_new_round(session_state(), map(), String.t()) ::
+  @spec start_new_round(session_state(), map(), String.t(), keyword()) ::
           {:ok, session_state()} | {:error, atom()}
-  def start_new_round(state, user, study_set_id) do
-    case generate_learn_items(user, study_set_id) do
+  def start_new_round(state, user, study_set_id, opts \\ []) do
+    mode = state.mode
+    size = Keyword.get(opts, :size, @default_round_size)
+    pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
+
+    case generate_items_for_mode(user, study_set_id, mode, size: size, pair_count: pair_count) do
       [] ->
         {:error, :no_items}
 
@@ -161,12 +127,17 @@ defmodule Flashwars.Learning.SessionManager do
             round_number: state.round_number + 1,
             round_correct_count: 0,
             round_position: 1,
-            current_item: List.first(items)
+            current_item: List.first(items),
+            phase: :first_pass
         }
 
         {:ok, new_state}
     end
   end
+
+  # ========================================
+  # State Updates
+  # ========================================
 
   @spec update_session_stats(session_state(), boolean()) :: session_state()
   def update_session_stats(state, correct?) do
@@ -185,20 +156,20 @@ defmodule Flashwars.Learning.SessionManager do
     %{state | round_correct_count: state.round_correct_count + 1}
   end
 
-  def defer_current_item(%{phase: :first_pass, current_item: item} = s) do
-    Map.update(s, :round_deferred, [item], &(&1 ++ [item]))
+  @spec defer_current_item(session_state()) :: session_state()
+  def defer_current_item(%{phase: :first_pass, current_item: item} = state) do
+    Map.update(state, :round_deferred, [item], &(&1 ++ [item]))
   end
 
-  def defer_current_item(%{phase: :retry, current_item: item} = s) do
-    Map.update(s, :retry_queue, [item], &(&1 ++ [item]))
+  def defer_current_item(%{phase: :retry, current_item: item} = state) do
+    Map.update(state, :retry_queue, [item], &(&1 ++ [item]))
   end
 
-  # no-op outside first pass
-  def defer_current_item(s), do: s
+  def defer_current_item(state), do: state
 
-  # ————————————————————————————————————————————————————————————————
+  # ========================================
   # Progress Calculations
-  # ————————————————————————————————————————————————————————————————
+  # ========================================
 
   @spec calculate_round_progress(session_state()) :: float()
   def calculate_round_progress(state) do
@@ -216,40 +187,13 @@ defmodule Flashwars.Learning.SessionManager do
   end
 
   @spec is_round_complete?(session_state()) :: boolean()
-  def is_round_complete?(state) do
-    state.round_index >= length(state.round_items) - 1
+  def is_round_complete?(%{round_index: idx, round_items: items}) do
+    idx >= length(items) - 1
   end
 
-  # ————————————————————————————————————————————————————————————————
-  # Item Generation
-  # ————————————————————————————————————————————————————————————————
-
-  @spec generate_learn_items(map(), String.t()) :: list()
-  defp generate_learn_items(user, set_id) do
-    try do
-      Engine.generate_learn_round(user, set_id, size: @round_size, pair_count: @match_pairs)
-    rescue
-      error ->
-        require Logger
-        Logger.error("Failed to generate learn items: #{inspect(error)}")
-        []
-    end
-  end
-
-  @spec create_empty_item() :: map()
-  def create_empty_item do
-    %{
-      kind: "multiple_choice",
-      prompt: "No items",
-      choices: ["—", "—", "—", "—"],
-      answer_index: 0,
-      term_id: nil
-    }
-  end
-
-  # ————————————————————————————————————————————————————————————————
-  # Session Persistence (existing functionality)
-  # ————————————————————————————————————————————————————————————————
+  # ========================================
+  # Persistence Operations
+  # ========================================
 
   @spec save_session(map(), String.t(), atom(), session_state()) ::
           {:ok, map()} | {:error, term()}
@@ -270,60 +214,84 @@ defmodule Flashwars.Learning.SessionManager do
     |> Ash.create(actor: user)
   end
 
-  @spec resume_session(map(), String.t(), atom()) :: {:ok, session_state()} | {:error, atom()}
-  def resume_session(user, study_set_id, mode) do
-    with {:ok, sessions} <-
+  @spec load_recent_session(map(), String.t(), atom()) ::
+          {:ok, session_state()} | {:error, atom()}
+  def load_recent_session(user, study_set_id, mode) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@recent_window_hours, :hour)
+
+    with {:ok, [session]} <-
            Learning.Session
-           |> Ash.Query.for_read(
-             :for_user_set_mode,
-             %{
-               study_set_id: study_set_id,
-               mode: mode
-             },
+           |> Ash.Query.for_read(:for_user_set_mode, %{study_set_id: study_set_id, mode: mode},
              actor: user
            )
-           |> Ash.read(limit: 1, actor: user),
-         [session] <- sessions do
-      if recent?(session) do
-        # Validate and potentially fix session state
-        case validate_session_state(session.state) do
-          {:ok, valid_state} -> {:ok, valid_state}
-          {:error, _} -> {:error, :invalid_session}
-        end
-      else
-        {:error, :no_session}
+           |> Ash.Query.filter(last_saved_at >= ^cutoff)
+           |> Ash.read(limit: 1, actor: user) do
+      case session.state do
+        %SessionState{} = st ->
+          {:ok, st}
       end
     else
       _ -> {:error, :no_session}
     end
   end
 
-  @spec validate_session_state(map()) :: {:ok, session_state()} | {:error, atom()}
-  defp validate_session_state(state) when is_map(state) do
-    required_keys = [:round_items, :round_index, :round_number, :round_position, :session_stats]
+  # ========================================
+  # Private Functions
+  # ========================================
 
-    if Enum.all?(required_keys, &Map.has_key?(state, &1)) do
-      # Ensure session_stats has required structure
-      stats = Map.get(state, :session_stats, %{})
+  defp generate_items_for_mode(user, study_set_id, :learn, opts) do
+    size = Keyword.get(opts, :size, @default_round_size)
+    pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
 
-      valid_stats = %{
-        total_correct: Map.get(stats, :total_correct, 0),
-        total_questions: Map.get(stats, :total_questions, 0)
-      }
-
-      valid_state = %{state | session_stats: valid_stats}
-      {:ok, valid_state}
-    else
-      {:error, :missing_required_keys}
+    try do
+      Engine.generate_learn_round(user, study_set_id, size: size, pair_count: pair_count)
+    rescue
+      error ->
+        require Logger
+        Logger.error("Failed to generate learn items: #{inspect(error)}")
+        []
     end
   end
 
-  defp validate_session_state(_), do: {:error, :invalid_format}
+  defp generate_items_for_mode(user, study_set_id, :test, opts) do
+    size = Keyword.get(opts, :size, 20)
+    pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
 
-  defp recent?(%{updated_at: updated_at}) when not is_nil(updated_at) do
-    diff_ms = DateTime.diff(DateTime.utc_now(), updated_at, :millisecond)
-    diff_ms < @recent_window
+    try do
+      Engine.generate_test(user, study_set_id, size: size, pair_count: pair_count)
+    rescue
+      error ->
+        require Logger
+        Logger.error("Failed to generate test items: #{inspect(error)}")
+        []
+    end
   end
 
-  defp recent?(_), do: false
+  defp generate_items_for_mode(_user, _study_set_id, _mode, _opts), do: []
+
+  defp advance_to_next_item(state) do
+    %{round_index: idx, round_items: items, round_position: pos} = state
+    new_idx = idx + 1
+
+    %{
+      state
+      | round_index: new_idx,
+        round_position: pos + 1,
+        current_item: Enum.at(items, new_idx)
+    }
+  end
+
+  defp enter_retry_phase(state) do
+    retry_items = Map.get(state, :round_deferred, [])
+
+    %{
+      state
+      | phase: :retry,
+        retry_queue: retry_items,
+        retry_index: 0,
+        round_deferred: [],
+        round_position: length(state.round_items),
+        current_item: List.first(retry_items)
+    }
+  end
 end
