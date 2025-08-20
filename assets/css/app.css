@@ -261,4 +261,8 @@
     .confetti-4 {
         background: #a78bfa;
     } /* violet-400 */
+
+    .deck-flip.is-flipped {
+        transform: rotateY(180deg);
+    }
 }

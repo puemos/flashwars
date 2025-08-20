@@ -4,38 +4,95 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   alias Flashwars.Content
   alias Flashwars.Content.{StudySet, Term}
   alias Flashwars.Learning
+  alias Flashwars.Learning.Engine
   alias Flashwars.Games
   import Phoenix.Component
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_admin}
 
+  @impl true
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, set} <- Content.get_study_set_by_id(id, actor: socket.assigns.current_user),
          {:ok, terms} <- read_terms(set, socket.assigns.current_user) do
+      # Compact study preview uses the same generator as Flashcards
+      preview_card =
+        Engine.generate_flashcard(socket.assigns.current_user, set.id,
+          order: :smart,
+          exclude_term_ids: []
+        )
+
       form = to_form(%{"term" => "", "definition" => ""}, as: :term)
       bulk_form = to_form(%{"csv" => ""}, as: :bulk)
       mastery_map = mastery_map(socket.assigns.current_user, set.id)
 
+      # Pre-calculate mastery counts to avoid stream enumeration
+      mastery_counts =
+        terms
+        |> Enum.group_by(fn term -> mastery_map[term.id] || :unseen end)
+        |> Map.new(fn {status, terms} -> {status, length(terms)} end)
+
       {:ok,
        socket
-       |> assign(:page_title, "Add Terms")
+       |> assign(:page_title, set.name)
        |> assign_new(:current_scope, fn -> %{org_id: socket.assigns.current_org.id} end)
        |> assign(:study_set, set)
+       |> assign(:terms_count, length(terms))
        |> assign(:form, form)
        |> assign(:bulk_form, bulk_form)
-       # editing state
        |> assign(:editing_id, nil)
        |> assign(:edit_form, nil)
        |> assign(:mastery_map, mastery_map)
+       |> assign(:mastery_counts, mastery_counts)
        |> assign(:next_position, length(terms) + 1)
+       |> assign(:preview_card, preview_card)
+       |> assign(:exclude_term_ids, MapSet.new())
+       |> assign(:share_open, false)
+       |> assign(:status_filter, :all)
        |> stream(:terms, terms)}
     else
-      _ ->
-        {:ok, redirect(socket, to: ~p"/")}
+      _ -> {:ok, redirect(socket, to: ~p"/")}
     end
   end
 
+  # =============================
+  # Study preview interactions
+  # =============================
+  @impl true
+  def handle_event("preview_grade", %{"grade" => grade}, socket) do
+    card = socket.assigns.preview_card
+
+    _ =
+      if card && card.term_id do
+        grade_atom = String.to_existing_atom(grade)
+
+        {:ok, _} =
+          Learning.review(socket.assigns.current_user, card.term_id, grade_atom,
+            queue_type: :review
+          )
+      end
+
+    exclude =
+      if card && card.term_id,
+        do: MapSet.put(socket.assigns.exclude_term_ids, card.term_id),
+        else: socket.assigns.exclude_term_ids
+
+    set = socket.assigns.study_set
+    actor = socket.assigns.current_user
+
+    next =
+      Engine.generate_flashcard(actor, set.id,
+        order: :smart,
+        exclude_term_ids: MapSet.to_list(exclude)
+      )
+
+    {:noreply, socket |> assign(:preview_card, next) |> assign(:exclude_term_ids, exclude)}
+  end
+
+  # =============================
+  # Existing term management & settings (inline editing + filter)
+  # =============================
+  @impl true
   def handle_event("add", %{"term" => params}, socket) do
     params =
       params
@@ -48,6 +105,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
          socket
          |> stream_insert(:terms, term)
          |> assign(:next_position, socket.assigns.next_position + 1)
+         |> assign(:terms_count, socket.assigns.terms_count + 1)
          |> assign(:form, to_form(%{"term" => "", "definition" => ""}, as: :term))}
 
       {:error, _reason} ->
@@ -55,6 +113,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     end
   end
 
+  @impl true
   def handle_event("edit", %{"id" => id}, socket) do
     case Ash.get(Term, id, actor: socket.assigns.current_user) do
       {:ok, term} ->
@@ -66,10 +125,12 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     end
   end
 
+  @impl true
   def handle_event("cancel_edit", _params, socket) do
     {:noreply, socket |> assign(:editing_id, nil) |> assign(:edit_form, nil)}
   end
 
+  @impl true
   def handle_event("save_edit", %{"edit" => params, "_row_id" => id}, socket) do
     with {:ok, term} <- Ash.get(Term, id, actor: socket.assigns.current_user),
          {:ok, _updated} <-
@@ -92,6 +153,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     end
   end
 
+  @impl true
   def handle_event("delete", %{"id" => id}, socket) do
     with {:ok, term} <- Ash.get(Term, id, actor: socket.assigns.current_user),
          {:ok, _} <- Ash.destroy(term, actor: socket.assigns.current_user),
@@ -100,14 +162,19 @@ defmodule FlashwarsWeb.StudySetLive.Show do
        socket
        |> stream(:terms, refreshed, reset: true)
        |> assign(:next_position, max(socket.assigns.next_position - 1, 1))
+       |> assign(:terms_count, max(socket.assigns.terms_count - 1, 0))
        |> put_flash(:info, "Deleted")}
     else
       _ -> {:noreply, put_flash(socket, :error, "Could not delete term")}
     end
   end
 
+  @impl true
   def handle_event("bulk_add", %{"bulk" => %{"csv" => csv}}, socket) do
-    lines = csv |> String.split(["\n", "\r"], trim: true)
+    # Use real newline characters; accept CRLF/CR/LF
+    lines =
+      csv
+      |> String.split(~r/\r\n|\n|\r/, trim: true)
 
     {created, _errors} =
       Enum.reduce(lines, {[], []}, fn line, {acc, errs} ->
@@ -118,8 +185,8 @@ defmodule FlashwarsWeb.StudySetLive.Show do
 
             if t != "" and d != "" do
               params = %{
-                "term" => String.trim(t),
-                "definition" => String.trim(d),
+                "term" => t,
+                "definition" => d,
                 "study_set_id" => socket.assigns.study_set.id,
                 "position" => socket.assigns.next_position + length(acc)
               }
@@ -140,15 +207,18 @@ defmodule FlashwarsWeb.StudySetLive.Show do
      socket
      |> stream(:terms, terms)
      |> assign(:next_position, socket.assigns.next_position + length(terms))
+     |> assign(:terms_count, socket.assigns.terms_count + length(terms))
      |> assign(:bulk_form, to_form(%{"csv" => ""}, as: :bulk))
      |> put_flash(:info, "Added #{length(terms)} terms")}
   end
 
+  @impl true
   def handle_event("refresh_mastery", _params, socket) do
     mm = mastery_map(socket.assigns.current_user, socket.assigns.study_set.id)
     {:noreply, assign(socket, :mastery_map, mm)}
   end
 
+  @impl true
   def handle_event("save_privacy", %{"set" => %{"privacy" => priv}}, socket) do
     with {:ok, set} <-
            Ash.get(StudySet, socket.assigns.study_set.id, actor: socket.assigns.current_user),
@@ -158,12 +228,16 @@ defmodule FlashwarsWeb.StudySetLive.Show do
              actor: socket.assigns.current_user
            )
            |> Ash.update() do
-      {:noreply, socket |> assign(:study_set, updated) |> put_flash(:info, "Settings saved")}
+      {:noreply,
+       socket
+       |> assign(:study_set, updated)
+       |> put_flash(:info, "Settings saved")}
     else
       _ -> {:noreply, put_flash(socket, :error, "Could not save settings")}
     end
   end
 
+  @impl true
   def handle_event("create_duel", _params, socket) do
     actor = socket.assigns.current_user
     set = socket.assigns.study_set
@@ -178,6 +252,35 @@ defmodule FlashwarsWeb.StudySetLive.Show do
         {:noreply, put_flash(socket, :error, "Could not create duel: #{inspect(err)}")}
     end
   end
+
+  # Modal open/close
+  @impl true
+  def handle_event("open_share", _params, socket) do
+    {:noreply, assign(socket, :share_open, true)}
+  end
+
+  @impl true
+  def handle_event("close_share", _params, socket) do
+    {:noreply, assign(socket, :share_open, false)}
+  end
+
+  # Filter by mastery status
+  @impl true
+  def handle_event("set_filter", %{"status" => status}, socket) do
+    status_atom = if(status == "all", do: :all, else: String.to_existing_atom(status))
+    {:noreply, assign(socket, :status_filter, status_atom)}
+  end
+
+  # Silence phx-change="noop" events from the inline edit form
+  @impl true
+  def handle_event("noop", _params, socket), do: {:noreply, socket}
+
+  # =============================
+  # Helpers
+  # =============================
+  defp status_match?(:all, _), do: true
+  defp status_match?(status, status), do: true
+  defp status_match?(_needed, _actual), do: false
 
   defp read_terms(%StudySet{id: id}, actor) do
     Term
@@ -198,11 +301,14 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     |> Map.merge(Map.new(res.unseen, &{&1.term_id, :unseen}))
   end
 
+  # Accepts: term,definition
+  #          "term",definition
+  #          term,"definition, with, commas"
   defp parse_csv_line(line) do
-    # very light CSV: first comma splits term,definition; supports quoted fields
     trimmed = String.trim(line)
 
-    case Regex.run(~r/^\s*\"?([^\"]*)\"?\s*,\s*\"?(.+?)\"?\s*$/, trimmed) do
+    # Optional quotes around fields; greedy-ish second field to keep commas
+    case Regex.run(~r/^\s*"?([^"]*)"?\s*,\s*"?(.+?)"?\s*$/, trimmed) do
       [_, term, defn] ->
         {term, defn}
 
@@ -214,129 +320,312 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     end
   end
 
+  # =============================
+  # Render
+  # =============================
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
+      <!-- Header with privacy + count -->
       <.header>
-        Build Set: {@study_set.name}
-        <:subtitle>Manage terms, sharing, and expertise</:subtitle>
+        {@study_set.name}
+        <:subtitle>
+          <span class="inline-flex items-center gap-2">
+            <span class="badge uppercase">{Atom.to_string(@study_set.privacy)}</span>
+            <span class="opacity-70">• {@terms_count} terms</span>
+          </span>
+        </:subtitle>
         <:actions>
           <div class="flex gap-2">
-            <button class="btn btn-primary" phx-click="create_duel">Create Duel</button>
-            <.link navigate={~p"/"} class="btn">Done</.link>
+            <.button phx-click="open_share" class="btn btn-sm">Share</.button>
+            <.button phx-click="create_duel" variant="primary" class="btn btn-sm">
+              Create Duel
+            </.button>
           </div>
         </:actions>
       </.header>
+      
+    <!-- Share Modal -->
+      <div
+        :if={@share_open}
+        id="share-modal"
+        class="fixed inset-0 z-50 flex items-center justify-center"
+        phx-window-keydown="close_share"
+        phx-key="escape"
+      >
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50" phx-click="close_share"></div>
+        
+    <!-- Dialog -->
+        <div class="relative w-full max-w-lg rounded-2xl bg-base-100 p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Share settings</h3>
+            <button class="btn btn-sm btn-ghost" phx-click="close_share">✕</button>
+          </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-1 space-y-6">
-          <div class="card bg-base-200">
-            <div class="card-body">
-              <h4 class="font-semibold">Share Settings</h4>
-              <.form for={to_form(%{}, as: :set)} id="set-privacy-form" phx-submit="save_privacy">
-                <.input
-                  name="set[privacy]"
-                  type="select"
-                  label="Privacy"
-                  value={Atom.to_string(@study_set.privacy)}
-                  options={[{"Private", "private"}, {"Link only", "link_only"}, {"Public", "public"}]}
-                />
-                <div :if={@study_set.privacy == :link_only} class="mt-2">
-                  <label class="block text-sm font-medium">Link</label>
-                  <% share_link =
-                    FlashwarsWeb.Endpoint.url() <> "/s/t/" <> to_string(@study_set.link_token || "") %>
-                  <div class="flex gap-2 items-center">
-                    <input class="input flex-1" readonly value={share_link} />
-                    <button
-                      type="button"
-                      class="btn btn-secondary"
-                      id="copy-set-link"
-                      phx-hook="CopyToClipboard"
-                      data-text={share_link}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-                <div class="flex justify-end mt-3">
-                  <.button class="btn btn-primary">Save</.button>
-                </div>
-              </.form>
-            </div>
-          </div>
-          <div class="card bg-base-200">
-            <div class="card-body">
-              <h4 class="font-semibold">Add Single</h4>
-              <.form for={@form} id="term-form" phx-submit="add">
-                <.input field={@form[:term]} type="text" label="Term" required />
-                <.input field={@form[:definition]} type="textarea" label="Definition" required />
-                <div class="flex justify-end">
-                  <.button class="btn btn-primary">Add</.button>
-                </div>
-              </.form>
-              <p class="text-xs opacity-70 mt-2">Next position: {@next_position}</p>
-            </div>
-          </div>
-          <div class="card bg-base-200">
-            <div class="card-body">
-              <h4 class="font-semibold">Bulk Add (CSV)</h4>
-              <p class="text-xs opacity-70">One per line, format: term,definition</p>
-              <.form for={@bulk_form} id="bulk-form" phx-submit="bulk_add">
-                <.input field={@bulk_form[:csv]} type="textarea" class="min-h-32" />
-                <div class="flex justify-end">
-                  <.button class="btn btn-secondary">Add CSV</.button>
-                </div>
-              </.form>
-            </div>
-          </div>
-        </div>
-        <div class="lg:col-span-2">
-          <div id="terms" class="card bg-base-200">
-            <div class="card-body">
-              <div class="flex items-center justify-between mb-2">
-                <h4 class="font-semibold">Terms</h4>
-                <button class="btn btn-ghost btn-sm" phx-click="refresh_mastery">
-                  Refresh Expertise
+          <div class="space-y-4">
+            <.form
+              for={to_form(%{}, as: :set)}
+              id="set-privacy-form"
+              phx-submit="save_privacy"
+              class="flex items-center gap-2"
+            >
+              <.input
+                name="set[privacy]"
+                type="select"
+                value={Atom.to_string(@study_set.privacy)}
+                options={[
+                  {"Private", "private"},
+                  {"Link only", "link_only"},
+                  {"Public", "public"}
+                ]}
+                class="select min-w-[160px]"
+              />
+              <.button class="btn mb-2">Save</.button>
+            </.form>
+
+            <div :if={@study_set.privacy == :link_only} class="rounded-lg bg-base-200 p-4">
+              <label class="text-sm font-medium mb-2 block">Shareable link</label>
+              <% share_link =
+                FlashwarsWeb.Endpoint.url() <>
+                  "/s/t/" <> to_string(@study_set.link_token || "") %>
+              <div class="flex items-center gap-2">
+                <input class="input w-full" readonly value={share_link} />
+                <button
+                  type="button"
+                  class="btn"
+                  id="copy-set-link"
+                  phx-hook="CopyToClipboard"
+                  data-text={share_link}
+                >
+                  Copy
                 </button>
               </div>
-              <.table id="terms-table" rows={@streams.terms} row_id={fn {id, _t} -> id end}>
-                <:col :let={{_id, t}} label="Term">
-                  <div :if={@editing_id != t.id}>{t.term}</div>
-                  <.input :if={@editing_id == t.id} field={@edit_form[:term]} type="text" />
-                </:col>
-                <:col :let={{_id, t}} label="Definition">
-                  <div :if={@editing_id != t.id}>{t.definition}</div>
-                  <.input :if={@editing_id == t.id} field={@edit_form[:definition]} type="textarea" />
-                </:col>
-                <:col :let={{_id, t}} label="Expertise">
-                  <% status = @mastery_map[t.id] %>
-                  <span :if={status == :mastered} class="badge badge-success">Mastered</span>
-                  <span :if={status == :struggling} class="badge badge-error">Struggling</span>
-                  <span :if={status == :practicing} class="badge badge-warning">Practicing</span>
-                  <span :if={status == :unseen or status == nil} class="badge">Unseen</span>
-                </:col>
-                <:col :let={{_id, t}} label="Actions">
-                  <div :if={@editing_id != t.id} class="flex gap-2">
-                    <button class="btn btn-sm" phx-click="edit" phx-value-id={t.id}>Edit</button>
-                    <button class="btn btn-sm btn-error" phx-click="delete" phx-value-id={t.id}>
-                      Delete
-                    </button>
+              <p class="text-xs opacity-70 mt-2">
+                Anyone with the link can view this set.
+              </p>
+            </div>
+
+            <div :if={@study_set.privacy == :public} class="rounded-lg bg-base-200 p-4">
+              <p class="text-sm">
+                This set is public. It may be discoverable by others in your org.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex justify-end mt-6">
+            <button class="btn" phx-click="close_share">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-12 gap-6">
+        <!-- Sidebar -->
+        <aside class="col-span-12 md:col-span-2 space-y-2">
+          <.link
+            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/learn"}
+            class="btn w-full justify-start"
+          >
+            Learn
+          </.link>
+          <.link
+            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/flashcards"}
+            class="btn w-full justify-start"
+          >
+            Flashcards
+          </.link>
+          <.link
+            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/test"}
+            class="btn w-full justify-start"
+          >
+            Test
+          </.link>
+          <button
+            type="button"
+            class="btn w-full justify-start"
+            disabled
+            title="Coming soon"
+          >
+            Match
+          </button>
+        </aside>
+        
+    <!-- Main content -->
+        <main class="col-span-12 md:col-span-10 space-y-6">
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-full">
+              <!-- Add Terms Forms -->
+              <div class="grid grid-cols-2 gap-6">
+                <!-- Compact study preview -->
+                <div class="card bg-base-200 col-span-full">
+                  <div class="card-body">
+                    <div :if={@preview_card} class="w-full">
+                      <div class="flex items-center justify-between">
+                        <div class="text-sm opacity-70">Term</div>
+                        <div class="text-xs opacity-60">Preview</div>
+                      </div>
+                      <h3 class="text-2xl font-semibold">{@preview_card.front}</h3>
+                      <div class="mt-4 grid grid-cols-2 gap-3">
+                        <button class="btn" phx-click="preview_grade" phx-value-grade="again">
+                          ✗
+                        </button>
+                        <button class="btn" phx-click="preview_grade" phx-value-grade="good">
+                          ✓
+                        </button>
+                      </div>
+                      <div class="mt-2 text-xs opacity-60">
+                        Want full experience? Use Learn / Flashcards above.
+                      </div>
+                    </div>
                   </div>
-                  <div :if={@editing_id == t.id} class="flex gap-2">
-                    <.form for={@edit_form} id={"edit-form-#{t.id}"} phx-submit="save_edit">
-                      <input type="hidden" name="_row_id" value={t.id} />
-                      <button class="btn btn-sm btn-primary">Save</button>
+                </div>
+
+                <div class="card bg-base-200">
+                  <div class="card-body">
+                    <h4 class="font-semibold">Add Single</h4>
+                    <.form for={@form} id="term-form" phx-submit="add">
+                      <.input field={@form[:term]} type="text" label="Term" required />
+                      <.input field={@form[:definition]} type="textarea" label="Definition" required />
+                      <div class="flex justify-end">
+                        <.button class="btn btn-primary">Add</.button>
+                      </div>
                     </.form>
-                    <button class="btn btn-sm" phx-click="cancel_edit">Cancel</button>
+                    <p class="text-xs opacity-70 mt-2">Next position: {@next_position}</p>
                   </div>
-                </:col>
-              </.table>
-              <div :if={Enum.empty?(@streams.terms.inserts)} class="text-sm opacity-70">
-                No terms yet. Add your first one on the left.
+                </div>
+
+                <div class="card bg-base-200">
+                  <div class="card-body">
+                    <h4 class="font-semibold">Bulk Add (CSV)</h4>
+                    <p class="text-xs opacity-70">One per line, format: term,definition</p>
+                    <.form for={@bulk_form} id="bulk-form" phx-submit="bulk_add">
+                      <.input field={@bulk_form[:csv]} type="textarea" class="min-h-32" />
+                      <div class="flex justify-end">
+                        <.button class="btn btn-secondary">Add CSV</.button>
+                      </div>
+                    </.form>
+                  </div>
+                </div>
+                <!-- Terms Management -->
+                <div id="terms" class="card bg-base-200 col-span-full">
+                  <div class="card-body">
+                    <div class="flex items-center justify-between mb-6">
+                      <div class="flex items-center gap-4">
+                        <h4 class="font-semibold">Terms</h4>
+                        <div class="flex items-center gap-2 text-sm">
+                          <% statuses = [:mastered, :practicing, :struggling, :unseen] %>
+                          <span :for={status <- statuses} class="flex items-center gap-1">
+                            <%= if (@mastery_counts[status] || 0) > 0 do %>
+                              <span class={[
+                                "inline-block w-2 h-2 rounded-full",
+                                status == :mastered && "bg-success",
+                                status == :struggling && "bg-error",
+                                status == :practicing && "bg-warning",
+                                status == :unseen && "bg-base-content opacity-50"
+                              ]}>
+                              </span>
+                              <span class="opacity-70">{@mastery_counts[status]} {status}</span>
+                            <% end %>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <label class="text-sm opacity-70">Filter</label>
+                        <.form for={to_form(%{}, as: :f)} phx-change="set_filter">
+                          <select name="status" class="select select-sm">
+                            <option value="all" selected={@status_filter == :all}>All</option>
+                            <option value="mastered" selected={@status_filter == :mastered}>
+                              Mastered
+                            </option>
+                            <option value="practicing" selected={@status_filter == :practicing}>
+                              Practicing
+                            </option>
+                            <option value="struggling" selected={@status_filter == :struggling}>
+                              Struggling
+                            </option>
+                            <option value="unseen" selected={@status_filter == :unseen}>
+                              Unseen
+                            </option>
+                          </select>
+                        </.form>
+                        <button class="btn btn-ghost btn-sm" phx-click="refresh_mastery">
+                          Refresh Expertise
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                      <table class="table table-hover mb-2 w-full">
+                        <thead>
+                          <tr>
+                            <th>Term</th>
+                            <th>Definition</th>
+                            <th class="w-48 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody id="term-rows" phx-update="stream">
+                          <tr
+                            :for={{dom_id, t} <- @streams.terms}
+                            :if={status_match?(@status_filter, @mastery_map[t.id] || :unseen)}
+                            id={dom_id}
+                          >
+                            <td>
+                              <div :if={@editing_id != t.id}>{t.term}</div>
+                              <.input :if={@editing_id == t.id} field={@edit_form[:term]} type="text" />
+                            </td>
+
+                            <td>
+                              <div :if={@editing_id != t.id}>{t.definition}</div>
+                              <.input
+                                :if={@editing_id == t.id}
+                                field={@edit_form[:definition]}
+                                type="textarea"
+                              />
+                            </td>
+
+                            <td class="text-right">
+                              <div :if={@editing_id != t.id} class="flex gap-2 justify-end">
+                                <button
+                                  class="btn btn-sm btn-ghost min-w-[80px]"
+                                  phx-click="edit"
+                                  phx-value-id={t.id}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  class="btn btn-sm btn-error min-w-[80px]"
+                                  phx-click="delete"
+                                  phx-value-id={t.id}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+
+                              <div :if={@editing_id == t.id} class="flex gap-2 justify-end">
+                                <.form for={@edit_form} phx-submit="save_edit" phx-change="noop">
+                                  <input type="hidden" name="_row_id" value={t.id} />
+                                  <.button class="btn btn-primary btn-sm min-w-[80px]">Save</.button>
+                                  <button
+                                    type="button"
+                                    class="btn btn-ghost btn-sm min-w-[80px]"
+                                    phx-click="cancel_edit"
+                                  >
+                                    Cancel
+                                  </button>
+                                </.form>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </Layouts.app>
     """

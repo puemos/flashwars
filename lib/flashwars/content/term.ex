@@ -11,7 +11,7 @@ defmodule Flashwars.Content.Term do
   end
 
   actions do
-    defaults [:read, :update, :destroy]
+    defaults [:read, :destroy, update: [:term, :definition]]
 
     create :create do
       accept [:term, :definition, :position, :study_set_id, :organization_id]

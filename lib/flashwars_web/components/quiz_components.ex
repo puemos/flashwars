@@ -399,10 +399,7 @@ defmodule FlashwarsWeb.QuizComponents do
           tabindex={if @locked?, do: "-1"}
           phx-click={if @locked?, do: nil, else: "answer"}
           phx-value-index={if @locked?, do: nil, else: choice_item.idx}
-          phx-window-keyup={
-            unless @locked?,
-              do: "answer"
-          }
+          phx-window-keyup={if !@locked?, do: "answer"}
           phx-key={choice_item.idx + 1}
         >
           <.kbd text={choice_item.letter} />
