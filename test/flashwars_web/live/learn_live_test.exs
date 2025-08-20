@@ -1,6 +1,7 @@
 defmodule FlashwarsWeb.LearnLiveTest do
   use FlashwarsWeb.ConnCase, async: true
 
+  alias Flashwars.Learning.SessionState
   alias Flashwars.Test.LearningFixtures
 
   setup do
@@ -25,7 +26,7 @@ defmodule FlashwarsWeb.LearnLiveTest do
       }
     ]
 
-    state = %{
+    state = %SessionState{
       round_items: items,
       round_index: 0,
       round_number: 1,

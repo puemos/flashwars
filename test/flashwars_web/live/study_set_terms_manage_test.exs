@@ -42,13 +42,10 @@ defmodule FlashwarsWeb.StudySetTermsManageTest do
       )
 
     conn = sign_in(conn, admin)
-    {:ok, lv, _} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/terms")
+    {:ok, lv, _} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
 
     # Verify edit control exists
-    assert has_element?(lv, "button[phx-click='edit'][phx-value-id='#{t2.id}']")
-
-    # Reorder down the first row (t1)
-    _ = lv |> element("button[phx-click='move_down'][phx-value-id='#{t1.id}']") |> render_click()
+    assert has_element?(lv, "button[phx-click='edit'][phx-value-id='#{t1.id}']")
 
     # Delete control exists
     assert has_element?(lv, "button[phx-click='delete'][phx-value-id='#{t2.id}']")

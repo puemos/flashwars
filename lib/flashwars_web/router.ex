@@ -57,7 +57,7 @@ defmodule FlashwarsWeb.Router do
 
       scope "/orgs/:org_id" do
         live "/study_sets/new", StudySetLive.New, :new
-        live "/study_sets/:id/terms", StudySetLive.EditTerms, :terms
+        live "/study_sets/:id", StudySetLive.Show, :show
         live "/study_sets/:id/learn", StudySetLive.Learn, :learn
         live "/study_sets/:id/flashcards", StudySetLive.Flashcards, :flashcards
         live "/study_sets/:id/test", StudySetLive.Test, :test

@@ -31,7 +31,7 @@ defmodule FlashwarsWeb.GamesDuelLiveTest do
     conn = sign_in(conn, user)
 
     # Go to study set terms page and click Create Duel
-    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/terms")
+    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
     assert has_element?(lv, "button", "Create Duel")
     _html = lv |> element("button", "Create Duel") |> render_click()
 
@@ -66,7 +66,7 @@ defmodule FlashwarsWeb.GamesDuelLiveTest do
 
     conn = sign_in(conn, user)
 
-    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/terms")
+    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
     _ = lv |> element("button", "Create Duel") |> render_click()
     {path, _} = assert_redirect(lv, 500)
 

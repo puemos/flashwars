@@ -1,4 +1,5 @@
 defmodule Flashwars.Learning.SessionManagerTest do
+  alias Flashwars.Learning.SessionState
   use Flashwars.DataCase, async: true
 
   alias Flashwars.Learning.SessionManager
@@ -12,7 +13,7 @@ defmodule Flashwars.Learning.SessionManagerTest do
     test "incorrect retry requeues item until answered correctly" do
       item = %{id: 1}
 
-      state = %{
+      state = %SessionState{
         phase: :first_pass,
         round_items: [item],
         round_index: 0,

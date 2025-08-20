@@ -12,7 +12,7 @@ defmodule Flashwars.Learning.SessionManager do
   require Ash.Query
 
   # Type definitions
-  @type session_state :: Flashwars.Learning.SessionState.t()
+  @type session_state :: Flashwars.Learning.SessionState
 
   @type progression_result ::
           {:advance_in_round, session_state()}

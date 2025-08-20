@@ -76,7 +76,7 @@ defmodule FlashwarsWeb.OrgHomeLive do
             <ul :if={@my_sets != []} class="menu">
               <li :for={set <- @my_sets} class="flex items-center justify-between">
                 <div>
-                  <.link navigate={~p"/orgs/#{@current_org.id}/study_sets/#{set.id}/terms"}>
+                  <.link navigate={~p"/orgs/#{@current_org.id}/study_sets/#{set.id}"}>
                     <span class="font-medium">{set.name}</span>
                     <span class="opacity-60">
                       · updated {Calendar.strftime(set.updated_at, "%b %d")}

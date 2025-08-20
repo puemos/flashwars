@@ -1,4 +1,4 @@
-defmodule FlashwarsWeb.StudySetLive.EditTerms do
+defmodule FlashwarsWeb.StudySetLive.Show do
   use FlashwarsWeb, :live_view
 
   alias Flashwars.Content
@@ -106,14 +106,6 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
     end
   end
 
-  def handle_event("move_up", %{"id" => id}, socket) do
-    move(socket, id, :up)
-  end
-
-  def handle_event("move_down", %{"id" => id}, socket) do
-    move(socket, id, :down)
-  end
-
   def handle_event("bulk_add", %{"bulk" => %{"csv" => csv}}, socket) do
     lines = csv |> String.split(["\n", "\r"], trim: true)
 
@@ -204,43 +196,6 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
     |> Map.merge(Map.new(res.struggling, &{&1.term_id, :struggling}))
     |> Map.merge(Map.new(res.practicing, &{&1.term_id, :practicing}))
     |> Map.merge(Map.new(res.unseen, &{&1.term_id, :unseen}))
-  end
-
-  # no longer used
-
-  # replaced by full refresh on edit
-
-  defp move(socket, id, dir) do
-    actor = socket.assigns.current_user
-    terms = Enum.map(socket.assigns.streams.terms.inserts, fn {_id, t} -> t end)
-    idx = Enum.find_index(terms, &(&1.id == id))
-
-    cond do
-      idx == nil ->
-        {:noreply, socket}
-
-      dir == :up and idx == 0 ->
-        {:noreply, socket}
-
-      dir == :down and idx == length(terms) - 1 ->
-        {:noreply, socket}
-
-      true ->
-        a = Enum.at(terms, idx)
-        b = Enum.at(terms, if(dir == :up, do: idx - 1, else: idx + 1))
-
-        with {:ok, _} <- update_position(a, b.position, actor),
-             {:ok, _} <- update_position(b, a.position, actor),
-             {:ok, refreshed} <- read_terms(socket.assigns.study_set, actor) do
-          {:noreply, socket |> stream(:terms, refreshed, reset: true)}
-        else
-          _ -> {:noreply, put_flash(socket, :error, "Could not reorder")}
-        end
-    end
-  end
-
-  defp update_position(term, new_pos, actor) do
-    term |> Ash.Changeset.for_update(:update, %{position: new_pos}, actor: actor) |> Ash.update()
   end
 
   defp parse_csv_line(line) do
@@ -345,20 +300,6 @@ defmodule FlashwarsWeb.StudySetLive.EditTerms do
                 </button>
               </div>
               <.table id="terms-table" rows={@streams.terms} row_id={fn {id, _t} -> id end}>
-                <:col :let={{_id, t}} label="#">
-                  <div class="flex items-center gap-1">
-                    <span class="w-8 inline-block text-center">{t.position}</span>
-                    <button
-                      :if={t.position > 1}
-                      class="btn btn-xs"
-                      phx-click="move_up"
-                      phx-value-id={t.id}
-                    >
-                      ↑
-                    </button>
-                    <button class="btn btn-xs" phx-click="move_down" phx-value-id={t.id}>↓</button>
-                  </div>
-                </:col>
                 <:col :let={{_id, t}} label="Term">
                   <div :if={@editing_id != t.id}>{t.term}</div>
                   <.input :if={@editing_id == t.id} field={@edit_form[:term]} type="text" />

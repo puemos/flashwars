@@ -32,7 +32,7 @@ defmodule FlashwarsWeb.StudySetLive.New do
       {:ok, set} ->
         {:noreply,
          push_navigate(socket,
-           to: ~p"/orgs/#{socket.assigns.current_org.id}/study_sets/#{set.id}/terms"
+           to: ~p"/orgs/#{socket.assigns.current_org.id}/study_sets/#{set.id}"
          )}
 
       {:error, %Ash.Error.Invalid{}} ->

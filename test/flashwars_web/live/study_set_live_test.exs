@@ -34,7 +34,7 @@ defmodule FlashwarsWeb.StudySetLiveTest do
     |> render_submit()
 
     {path, _opts} = assert_redirect(lv, 500)
-    assert path =~ ~r{/orgs/#{org.id}/study_sets/.+/terms$}
+    assert path =~ ~r{/orgs/#{org.id}/study_sets/.+$}
   end
 
   test "add term shows in the list", %{conn: conn} do
@@ -50,7 +50,7 @@ defmodule FlashwarsWeb.StudySetLiveTest do
       )
 
     conn = sign_in(conn, user)
-    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/terms")
+    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
 
     form(lv, "#term-form",
       term: %{
