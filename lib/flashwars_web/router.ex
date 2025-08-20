@@ -56,6 +56,7 @@ defmodule FlashwarsWeb.Router do
       live "/orgs/:org_id", OrgHomeLive, :home
 
       scope "/orgs/:org_id" do
+        live "/study_sets", StudySetLive.Index, :index
         live "/study_sets/new", StudySetLive.New, :new
         live "/study_sets/:id", StudySetLive.Show, :show
         live "/study_sets/:id/learn", StudySetLive.Learn, :learn

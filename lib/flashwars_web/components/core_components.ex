@@ -29,6 +29,12 @@ defmodule FlashwarsWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: FlashwarsWeb.Gettext
 
+  # Routes generation with the ~p sigil
+  use Phoenix.VerifiedRoutes,
+    endpoint: FlashwarsWeb.Endpoint,
+    router: FlashwarsWeb.Router,
+    statics: FlashwarsWeb.static_paths()
+
   alias Phoenix.LiveView.JS
 
   @doc """
@@ -525,6 +531,160 @@ defmodule FlashwarsWeb.CoreComponents do
         {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
          "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
     )
+  end
+
+  @doc """
+  Renders a study set card with mastery status.
+
+  ## Examples
+
+      <.study_set_card
+        set={@set}
+        current_org={@current_org}
+        show_mastery={true}
+      />
+  """
+  attr :set, :map, required: true, doc: "the study set to display"
+  attr :current_org, :map, required: true, doc: "the current organization"
+  attr :show_mastery, :boolean, default: true, doc: "whether to show mastery status"
+  attr :show_actions, :boolean, default: true, doc: "whether to show action buttons"
+
+  def study_set_card(assigns) do
+    ~H"""
+    <div class="hover:bg-base-300 py-4 -mx-2 px-3 transition-all rounded-lg border border-transparent hover:border-base-300">
+      <div class="grid grid-cols-[1fr_auto_auto] gap-6 items-start">
+        <!-- Title and metadata section -->
+        <div class="min-w-0 space-y-2">
+          <div class="flex items-start justify-between gap-4">
+            <.link
+              navigate={~p"/orgs/#{@current_org.id}/study_sets/#{@set.id}"}
+              class="font-semibold text-lg hover:underline transition-colors block leading-tight min-w-0"
+            >
+              {@set.name}
+            </.link>
+            <span
+              :if={is_integer(@set.terms_count)}
+              class="flex items-center gap-1 text-sm text-base-content/60 flex-shrink-0"
+            >
+              <.icon name="hero-rectangle-stack" class="size-3" />
+              {@set.terms_count} terms
+            </span>
+          </div>
+          
+    <!-- Progress summary (moved from right side) -->
+          <div
+            :if={(@show_mastery and @set.mastery_status) && @set.mastery_status.total > 0}
+            class="space-y-0.5"
+          >
+            <div class="text-sm font-medium text-base-content/60">
+              {@set.mastery_status.percentage}% Complete
+            </div>
+          </div>
+        </div>
+        
+    <!-- Progress section -->
+        <div class="justify-self-end">
+          <div
+            :if={(@show_mastery and @set.mastery_status) && @set.mastery_status.total > 0}
+            class="text-right space-y-3"
+          >
+            <!-- Progress bar -->
+            <div class="flex justify-end">
+              <div class="w-36 h-2 bg-base-100 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-gradient-to-r from-success to-success-content rounded-full transition-all duration-300"
+                  style={"width: #{@set.mastery_status.percentage}%"}
+                >
+                </div>
+              </div>
+            </div>
+            
+    <!-- Compact detailed breakdown with tooltips -->
+            <div class="flex flex-wrap gap-3 justify-end">
+              <!-- Mastered -->
+              <div class="tooltip tooltip-bottom" data-tip="Mastered terms">
+                <div class="flex items-center gap-1.5 text-xs cursor-help">
+                  <div class="w-2 h-2 rounded-full bg-success"></div>
+                  <span class="text-success font-medium">{@set.mastery_status.mastered}</span>
+                </div>
+              </div>
+              
+    <!-- Learning -->
+              <div
+                class="tooltip tooltip-bottom"
+                data-tip="Terms being learned"
+              >
+                <div class="flex items-center gap-1.5 text-xs cursor-help">
+                  <div class="w-2 h-2 rounded-full bg-warning"></div>
+                  <span class="text-warning font-medium">{@set.mastery_status.practicing}</span>
+                </div>
+              </div>
+              
+    <!-- Struggling -->
+              <div
+                class="tooltip tooltip-bottom"
+                data-tip="Terms you're struggling with"
+              >
+                <div class="flex items-center gap-1.5 text-xs cursor-help">
+                  <div class="w-2 h-2 rounded-full bg-error"></div>
+                  <span class="text-error font-medium">{@set.mastery_status.struggling}</span>
+                </div>
+              </div>
+              
+    <!-- New -->
+              <div
+                class="tooltip tooltip-bottom"
+                data-tip="New terms not yet studied"
+              >
+                <div class="flex items-center gap-1.5 text-xs cursor-help">
+                  <div class="w-2 h-2 rounded-full bg-info"></div>
+                  <span class="text-info font-medium">{@set.mastery_status.unseen}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+    <!-- New set indicator -->
+          <div
+            :if={(@show_mastery and @set.mastery_status) && @set.mastery_status.total == 0}
+            class="flex items-center gap-2 text-info bg-info/10 px-3 py-2 rounded-full"
+          >
+            <.icon name="hero-sparkles" class="size-4" />
+            <span class="text-sm font-medium">New Set</span>
+          </div>
+        </div>
+        
+    <!-- Actions dropdown -->
+        <div :if={@show_actions} class="dropdown dropdown-end justify-self-end">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-sm hover:bg-base-200">
+            <.icon name="hero-ellipsis-horizontal" class="size-4" />
+            <span class="sr-only">More actions</span>
+          </div>
+          <ul
+            tabindex="0"
+            class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-52 border border-base-300"
+          >
+            <li>
+              <.link
+                navigate={~p"/orgs/#{@current_org.id}/study_sets/#{@set.id}"}
+                class="flex items-center gap-2"
+              >
+                <.icon name="hero-eye" class="size-4" /> View Set
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/orgs/#{@current_org.id}/study_sets/#{@set.id}/learn"}
+                class="flex items-center gap-2"
+              >
+                <.icon name="hero-academic-cap" class="size-4" /> Start Studying
+              </.link>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    """
   end
 
   @doc """

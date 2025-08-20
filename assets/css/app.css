@@ -34,14 +34,14 @@
     --color-base-content: #ffffff;
 
     /* Brand core unchanged, but you can bump saturation if desired */
-    --color-primary: #6b21a8; /* richer purple (tailwind-violet ~700) */
+    --color-primary: #3d247a; /* richer purple (tailwind-violet ~700) */
     --color-primary-content: #ffffff;
     --color-secondary: #a21caf; /* deeper magenta/violet */
     --color-secondary-content: #ffffff;
 
     /* Keep the neon accent – great contrast against deep purple */
     --color-accent: #5cffb6;
-    --color-accent-content: #28125b;
+    --color-accent-content: #ffffff;
 
     /* >>> The key change: make neutral PURPLE, not gray */
     --color-neutral: #6f4ab8; /* purple-neutral (no more gray UI) */
@@ -62,9 +62,9 @@
     --radius-box: 1rem;
     --size-selector: 0.3rem;
     --size-field: 0.3rem;
-    --border: 3px;
+    --border: 2px;
     --depth: 1;
-    --noise: 0;
+    --noise: 1;
 }
 
 @plugin "../vendor/daisyui-theme" {
@@ -89,7 +89,7 @@
     --color-success: #11b03c; /* Green from drawing palette */
     --color-success-content: #ffffff; /* White text on success */
     --color-warning: #ffc126; /* Gold/yellow from drawing palette */
-    --color-warning-content: #301a6b; /* Dark purple text on warning */
+    --color-warning-content: #ffffff; /* Dark purple text on warning */
     --color-error: #ff0013; /* Red from drawing palette */
     --color-error-content: #ffffff; /* White text on error */
     --radius-selector: 1rem;
@@ -97,9 +97,9 @@
     --radius-box: 1rem;
     --size-selector: 0.3rem;
     --size-field: 0.3rem;
-    --border: 3px;
+    --border: 2px;
     --depth: 1;
-    --noise: 0;
+    --noise: 1;
 }
 
 /* Add variants based on LiveView classes */

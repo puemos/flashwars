@@ -34,7 +34,7 @@ defmodule FlashwarsWeb.OrgLiveTest do
 
     conn = sign_in(conn, user)
     {:ok, _lv, html} = live(conn, ~p"/orgs/#{org.id}")
-    assert html =~ "New Study Set"
+    assert html =~ "Create Study Set"
     assert html =~ "My Study Sets"
     assert html =~ "Recent Activity"
   end
