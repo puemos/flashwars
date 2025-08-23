@@ -147,7 +147,15 @@ defmodule Flashwars.Games.GameRoom do
       ],
       default: :lobby
 
-    attribute :config, :map, default: %{}
+    attribute :config, Flashwars.Games.GameRoomConfig,
+      default: %{
+        rounds: 10,
+        types: ["multiple_choice"],
+        time_limit_ms: nil,
+        intermission_ms: 10000,
+        players: %{}
+      }
+
     attribute :rating_scope, :string
 
     attribute :privacy, :atom,

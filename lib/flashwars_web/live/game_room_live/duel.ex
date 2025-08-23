@@ -5,7 +5,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   require Ash.Query
 
   alias Flashwars.Games
-  alias Flashwars.Games.{GameRoom, GameSubmission}
+  alias Flashwars.Games.{GameRoom, GameSubmission, PlayerInfo, GameRoomConfig}
   alias FlashwarsWeb.Presence
 
   alias FlashwarsWeb.QuizComponents
@@ -96,11 +96,31 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       socket =
         case socket.assigns.current_user do
           %{id: uid} ->
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-              event: :name_set,
-              user_id: uid,
-              name: trimmed
-            })
+            player_key = "user_#{uid}"
+
+            socket =
+              if socket.assigns.host? do
+                update_player_info(socket, player_key, %PlayerInfo{
+                  nickname: trimmed,
+                  user_id: to_string(uid),
+                  guest_id: nil,
+                  last_seen: DateTime.utc_now()
+                })
+              else
+                # Broadcast to host to store
+                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+                  event: :player_info_update,
+                  player_key: player_key,
+                  player_info: %PlayerInfo{
+                    nickname: trimmed,
+                    user_id: to_string(uid),
+                    guest_id: nil,
+                    last_seen: DateTime.utc_now()
+                  }
+                })
+
+                socket
+              end
 
             # Update presence metadata for signed-in users
             _ =
@@ -118,7 +138,33 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
             |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, trimmed))
 
           _ ->
-            # Anonymous: update presence metadata using stored presence_key
+            # Anonymous: update using guest_id
+            guest_id = socket.assigns.guest_id || generate_guest_id()
+            player_key = "guest_#{guest_id}"
+
+            socket =
+              if socket.assigns.host? do
+                update_player_info(socket, player_key, %PlayerInfo{
+                  nickname: trimmed,
+                  user_id: nil,
+                  guest_id: guest_id,
+                  last_seen: DateTime.utc_now()
+                })
+              else
+                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+                  event: :player_info_update,
+                  player_key: player_key,
+                  player_info: %PlayerInfo{
+                    nickname: trimmed,
+                    user_id: nil,
+                    guest_id: guest_id,
+                    last_seen: DateTime.utc_now()
+                  }
+                })
+
+                socket
+              end
+
             _ =
               if presence_available?() and socket.assigns[:presence_key] do
                 Presence.update(
@@ -128,15 +174,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
                   fn _ -> %{name: trimmed} end
                 )
               end
-
-            # Broadcast with guest_id so host can persist to room config
-            if socket.assigns[:guest_id] do
-              PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-                event: :name_set,
-                guest_id: socket.assigns.guest_id,
-                name: trimmed
-              })
-            end
 
             assign(socket, :my_name, trimmed)
         end
@@ -157,11 +194,30 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       socket =
         case socket.assigns.current_user do
           %{id: uid} ->
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-              event: :name_set,
-              user_id: uid,
-              name: trimmed
-            })
+            player_key = "user_#{uid}"
+
+            socket =
+              if socket.assigns.host? do
+                update_player_info(socket, player_key, %PlayerInfo{
+                  nickname: trimmed,
+                  user_id: to_string(uid),
+                  guest_id: nil,
+                  last_seen: DateTime.utc_now()
+                })
+              else
+                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+                  event: :player_info_update,
+                  player_key: player_key,
+                  player_info: %PlayerInfo{
+                    nickname: trimmed,
+                    user_id: to_string(uid),
+                    guest_id: nil,
+                    last_seen: DateTime.utc_now()
+                  }
+                })
+
+                socket
+              end
 
             _ =
               if presence_available?() do
@@ -178,6 +234,32 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
             |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, trimmed))
 
           _ ->
+            guest_id = socket.assigns.guest_id || generate_guest_id()
+            player_key = "guest_#{guest_id}"
+
+            socket =
+              if socket.assigns.host? do
+                update_player_info(socket, player_key, %PlayerInfo{
+                  nickname: trimmed,
+                  user_id: nil,
+                  guest_id: guest_id,
+                  last_seen: DateTime.utc_now()
+                })
+              else
+                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+                  event: :player_info_update,
+                  player_key: player_key,
+                  player_info: %PlayerInfo{
+                    nickname: trimmed,
+                    user_id: nil,
+                    guest_id: guest_id,
+                    last_seen: DateTime.utc_now()
+                  }
+                })
+
+                socket
+              end
+
             _ =
               if presence_available?() and socket.assigns[:presence_key] do
                 Presence.update(
@@ -292,7 +374,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   def handle_event("save_settings", %{"settings" => params}, socket) do
     actor = socket.assigns.current_user
-    {config, privacy} = parse_settings(params)
+    {config, privacy} = parse_settings(params, socket.assigns.room.config)
 
     case Games.update_config(socket.assigns.room, %{config: config, privacy: privacy},
            actor: actor
@@ -430,34 +512,16 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  def handle_info(%{event: :name_set, user_id: uid, name: name}, socket) do
-    {:noreply,
-     socket
-     |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, name))}
-  end
-
-  # Persist anonymous guest names into room config via host socket
+  # Handle player info updates from other players
   def handle_info(
-        %{event: :name_set, guest_id: gid, name: name},
+        %{event: :player_info_update, player_key: key, player_info: info},
         %{assigns: %{host?: true}} = socket
-      )
-      when is_binary(gid) do
-    cfg = socket.assigns.room.config || %{}
-    guest_names = Map.get(cfg, "guest_names") || Map.get(cfg, :guest_names) || %{}
-    new_cfg = Map.put(cfg, :guest_names, Map.put(guest_names, gid, name))
-
-    case Games.update_config(socket.assigns.room, %{config: new_cfg},
-           actor: socket.assigns.current_user
-         ) do
-      {:ok, room} ->
-        {:noreply, assign(socket, :room, room)}
-
-      _ ->
-        {:noreply, socket}
-    end
+      ) do
+    socket = update_player_info(socket, key, info)
+    {:noreply, socket}
   end
 
-  def handle_info(%{event: :name_set, guest_id: _gid}, socket), do: {:noreply, socket}
+  def handle_info(%{event: :player_info_update}, socket), do: {:noreply, socket}
 
   def handle_info(%{event: "presence_diff"}, socket) do
     {:noreply, assign(socket, :presences, presence_list_safe(socket.assigns.topic))}
@@ -572,10 +636,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   end
 
   def handle_info(%{event: :game_over}, socket) do
-    # Build final scoreboard including guest names from room config
+    # Build final scoreboard including player info from room config
     base = fetch_scoreboard(socket.assigns.room, socket.assigns.current_user)
-    guests = guest_entries(socket.assigns.room)
-    merged = merge_guest_scores(base, guests)
+    player_entries = get_player_entries(socket.assigns.room)
+    merged = merge_player_scores(base, player_entries)
 
     {:noreply,
      socket
@@ -666,60 +730,159 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
      |> maybe_track_presence(topic)}
   end
 
+  # Helper to update player info using the typed struct
+  defp update_player_info(socket, player_key, player_info) do
+    current_config = socket.assigns.room.config
+
+    # Update the players map
+    updated_players = Map.put(current_config.players, player_key, player_info)
+
+    # Create new config struct with updated players
+    new_config = %{current_config | players: updated_players}
+
+    case Games.update_config(socket.assigns.room, %{config: new_config},
+           actor: socket.assigns.current_user
+         ) do
+      {:ok, room} ->
+        assign(socket, :room, room)
+
+      _ ->
+        socket
+    end
+  end
+
   defp maybe_track_presence(socket, topic) do
     pres_avail? = presence_available?()
 
-    # Existing presences (before tracking current socket) for uniqueness
+    # Existing presences for display
     presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
 
-    used_names =
+    # Persisted nickname and nicknames map from config
+    persisted_name = find_my_persisted_nickname(socket.assigns.room, socket)
+    nicknames = load_player_nicknames(socket.assigns.room, socket)
+
+    # Track used names from presence and config to avoid collisions
+    used_from_presence =
       presences
       |> Map.values()
       |> Enum.flat_map(fn %{metas: metas} -> Enum.map(metas, & &1[:name]) end)
       |> Enum.filter(&is_binary/1)
       |> MapSet.new()
 
-    {my_name, nicknames} =
-      case socket.assigns.current_user do
-        nil ->
-          # Try to load prior guest name from room config using guest_id
-          guest_name =
-            case {socket.assigns[:guest_id], socket.assigns[:room]} do
-              {gid, %{config: cfg}} when is_binary(gid) and is_map(cfg) ->
-                gn = Map.get(cfg, "guest_names") || Map.get(cfg, :guest_names) || %{}
-                gn[gid]
+    used_from_config = nicknames |> Map.values() |> MapSet.new()
+    used_names = MapSet.union(used_from_presence, used_from_config)
 
-              _ ->
-                nil
-            end
+    socket =
+      case {socket.assigns.current_user, persisted_name} do
+        # Authenticated with saved nickname
+        {%{id: uid}, name} when is_binary(name) ->
+          socket
+          |> assign(:my_name, name)
+          |> assign(:nicknames, Map.put(nicknames, uid, name))
 
-          {guest_name, %{}}
+        # Authenticated without saved nickname yet
+        {%{id: uid}, nil} ->
+          if socket.assigns.room.host_id == uid do
+            # Host: generate once and persist
+            new_name = generate_playful_name(used_names)
 
-        %{id: uid} ->
-          # Prefer existing nickname if any, otherwise generate playful unique name
-          existing = socket.assigns[:nicknames] && socket.assigns.nicknames[uid]
-          base = existing || generate_playful_name(used_names)
-          name = ensure_unique_name(base, used_names)
-          {name, %{uid => name}}
+            socket =
+              update_player_info(socket, "user_#{uid}", %PlayerInfo{
+                nickname: new_name,
+                user_id: to_string(uid),
+                guest_id: nil,
+                last_seen: DateTime.utc_now()
+              })
+
+            nicknames2 = load_player_nicknames(socket.assigns.room, socket)
+
+            socket
+            |> assign(:my_name, new_name)
+            |> assign(:nicknames, Map.put(nicknames2, uid, new_name))
+          else
+            # Non-host: stable fallback until user sets a name
+            fallback = display_name(socket.assigns.current_user)
+
+            socket
+            |> assign(:my_name, fallback)
+            |> assign(:nicknames, Map.put(nicknames, uid, fallback))
+          end
+
+        # Guests or no user
+        _ ->
+          socket
+          |> assign(:my_name, persisted_name)
+          |> assign(:nicknames, nicknames)
       end
 
     key = presence_key(socket.assigns.current_user, socket.assigns[:guest_id])
 
     if connected?(socket) and pres_avail? do
-      meta = %{name: my_name || display_name(socket.assigns.current_user)}
+      meta = %{name: socket.assigns.my_name || display_name(socket.assigns.current_user)}
       _ = Presence.track(self(), topic, key, meta)
     end
 
-    # Refresh presences after potential tracking
     presences = if pres_avail?, do: presence_list_safe(topic), else: %{}
 
     socket
     |> assign(:presences, presences)
     |> assign(:ready_user_ids, MapSet.new())
     |> assign(:intermission_rid, nil)
-    |> assign(:my_name, my_name)
-    |> assign(:nicknames, Map.merge(socket.assigns.nicknames, nicknames))
     |> assign(:presence_key, key)
+  end
+
+  # Load player information, tolerant of structs or plain maps.
+  defp load_player_nicknames(%{config: config}, _socket) do
+    players = config.players || %{}
+
+    Enum.reduce(players, %{}, fn
+      {_k, %PlayerInfo{user_id: uid, nickname: nick}}, acc
+      when is_binary(uid) and is_binary(nick) ->
+        Map.put(acc, String.to_integer(uid), nick)
+
+      {_k, %{} = pi}, acc ->
+        uid = pi[:user_id] || pi["user_id"]
+        nick = pi[:nickname] || pi["nickname"]
+
+        if is_binary(uid) and is_binary(nick) do
+          Map.put(acc, String.to_integer(uid), nick)
+        else
+          acc
+        end
+
+      _, acc ->
+        acc
+    end)
+  rescue
+    _ -> %{}
+  end
+
+  # Find my persisted nickname from player info, whether struct or map
+  defp find_my_persisted_nickname(%{config: config}, socket) do
+    players = config.players || %{}
+
+    player_key =
+      case socket.assigns.current_user do
+        %{id: uid} ->
+          "user_#{uid}"
+
+        _ ->
+          case socket.assigns[:guest_id] do
+            nil -> nil
+            gid -> "guest_#{gid}"
+          end
+      end
+
+    case player_key && Map.get(players, player_key) do
+      %PlayerInfo{nickname: nickname} ->
+        nickname
+
+      %{} = pi ->
+        pi[:nickname] || pi["nickname"]
+
+      _ ->
+        nil
+    end
   end
 
   defp presence_available? do
@@ -769,41 +932,59 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     |> Enum.sort_by(& &1.score, :desc)
   end
 
-  defp guest_entries(%{config: cfg}) when is_map(cfg) do
-    gn = Map.get(cfg, "guest_names") || Map.get(cfg, :guest_names) || %{}
-    Enum.map(gn, fn {_gid, name} -> %{user_id: nil, user: nil, name: name, score: 0} end)
+  defp get_player_entries(%{config: config}) do
+    players = config.players || %{}
+
+    players
+    |> Map.values()
+    |> Enum.map(fn player_info ->
+      %{
+        user_id: if(player_info.user_id, do: String.to_integer(player_info.user_id), else: nil),
+        user: nil,
+        name: player_info.nickname,
+        score: 0
+      }
+    end)
+  rescue
+    _ -> []
   end
 
-  defp guest_entries(_), do: []
-
-  defp merge_guest_scores(user_entries, guest_entries) do
-    # Merge guests whose names are not present in user entries. Keep existing order by score.
+  defp merge_player_scores(user_entries, player_entries) do
+    # Merge players whose names are not present in user entries. Keep existing order by score.
     existing_names = MapSet.new(Enum.map(user_entries, & &1.name))
-    guest_entries = Enum.reject(guest_entries, fn g -> MapSet.member?(existing_names, g.name) end)
-    user_entries ++ guest_entries
+
+    new_player_entries =
+      Enum.reject(player_entries, fn p -> MapSet.member?(existing_names, p.name) end)
+
+    user_entries ++ new_player_entries
   end
 
-  defp settings_from_room(%{config: cfg} = room) do
+  defp settings_from_room(%{config: config}) do
     %{
-      rounds: (cfg && (cfg["rounds"] || cfg[:rounds])) || 10,
-      types: (cfg && (cfg["types"] || cfg[:types])) || ["multiple_choice"],
-      time_limit_ms: (cfg && (cfg["time_limit_ms"] || cfg[:time_limit_ms])) || nil,
-      intermission_ms: (cfg && (cfg["intermission_ms"] || cfg[:intermission_ms])) || 10_000,
-      privacy: room.privacy
+      rounds: config.rounds,
+      types: config.types,
+      time_limit_ms: config.time_limit_ms,
+      intermission_ms: config.intermission_ms
     }
   end
 
-  defp parse_settings(params) do
+  defp parse_settings(params, current_config) do
     rounds = parse_int(params["rounds"]) || 10
     types = params["types"] || []
-    time_limit_ms = parse_int(params["time_limit_ms"]) || nil
-    intermission_ms = parse_int(params["intermission_ms"]) || nil
+    time_limit_ms = parse_int(params["time_limit_ms"])
+    intermission_ms = parse_int(params["intermission_ms"]) || 10_000
     privacy = parse_privacy(params["privacy"]) || :private
 
-    config = %{rounds: rounds, types: types, time_limit_ms: time_limit_ms}
+    # Preserve existing players when updating settings
+    existing_players = if current_config, do: current_config.players || %{}, else: %{}
 
-    config =
-      if intermission_ms, do: Map.put(config, :intermission_ms, intermission_ms), else: config
+    config = %GameRoomConfig{
+      rounds: rounds,
+      types: types,
+      time_limit_ms: time_limit_ms,
+      intermission_ms: intermission_ms,
+      players: existing_players
+    }
 
     {config, privacy}
   end
@@ -884,20 +1065,20 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   defp display_name(_), do: "Player"
 
+  defp generate_guest_id do
+    Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
+  end
+
   @adjectives ~w(Brisk Clever Zippy Sly Jolly Witty Sunny Swift Cosmic Daring Jazzy Lively Quirky Rapid Snazzy)
   @animals ~w(Panda Falcon Tiger Koala Otter Fox Dolphin Llama Badger Eagle Gecko Panda Yak Corgi Puma)
 
   defp generate_playful_name(used_names) do
-    # Generate until not in used set, then ensure uniqueness with suffix
-    base =
-      Enum.random(@adjectives) <> " " <> Enum.random(@animals)
-
+    base = Enum.random(@adjectives) <> " " <> Enum.random(@animals)
     ensure_unique_name(base, used_names)
   end
 
   defp ensure_unique_name(base, used_names) do
     if MapSet.member?(used_names, base) do
-      # try with numeric suffixes
       2..999
       |> Enum.find_value(fn n ->
         candidate = base <> " " <> Integer.to_string(n)
@@ -985,7 +1166,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
                 label="Privacy"
                 type="select"
                 options={[{"Private", "private"}, {"Link only", "link_only"}, {"Public", "public"}]}
-                value={Atom.to_string(@settings.privacy)}
+                value={Atom.to_string(@room.privacy)}
               />
             </div>
 
@@ -1027,11 +1208,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               </div>
             </div>
 
-            <div :if={@settings.privacy == :link_only} class="mt-4">
+            <div :if={@room.privacy == :link_only} class="mt-4">
               <label class="block text-sm font-medium">Copy Invitation Link</label>
               <div class="flex gap-2 items-center mt-2">
                 <input class="input flex-1" type="text" readonly value={invitation_link(@room)} />
-                <!-- use secondary so it's purple, not neutral -->
                 <button
                   id="copy-invite"
                   type="button"

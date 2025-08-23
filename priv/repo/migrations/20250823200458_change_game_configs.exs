@@ -1,4 +1,4 @@
-defmodule Flashwars.Repo.Migrations.MigrateResources1 do
+defmodule Flashwars.Repo.Migrations.ChangeGameConfigs do
   @moduledoc """
   Updates resources based on their most recent snapshots.
 
@@ -11,9 +11,24 @@ defmodule Flashwars.Repo.Migrations.MigrateResources1 do
     alter table(:sessions) do
       modify :state, :map, null: false, default: nil
     end
+
+    alter table(:game_rooms) do
+      modify :config, :map,
+        default: %{
+          rounds: 10,
+          types: ["multiple_choice"],
+          time_limit_ms: nil,
+          intermission_ms: 10000,
+          players: %{}
+        }
+    end
   end
 
   def down do
+    alter table(:game_rooms) do
+      modify :config, :map, default: %{}
+    end
+
     alter table(:sessions) do
       modify :state, :map, null: true, default: %{}
     end

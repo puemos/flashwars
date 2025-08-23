@@ -87,7 +87,7 @@ defmodule FlashwarsWeb.GamesDuelLiveTest do
     room = Ash.get!(Flashwars.Games.GameRoom, room_id, authorize?: false)
     assert room.privacy == :link_only
     assert is_binary(room.link_token) and byte_size(room.link_token) > 10
-    assert (room.config["rounds"] || room.config[:rounds]) == 2
+    assert room.config.rounds == 2
   end
 
   test "default playful names are unique and used in lobby and final scores", %{conn: conn} do
