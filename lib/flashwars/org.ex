@@ -6,10 +6,13 @@ defmodule Flashwars.Org do
   resources do
     resource Flashwars.Org.Organization do
       define :create_organization, action: :create
+      define :get_organization_by_id, action: :read, get_by: [:id]
+      define :list_organizations, action: :read
     end
 
     resource Flashwars.Org.OrgMembership do
       define :add_member, action: :create
+      define :list_org_memberships, action: :read
     end
 
     resource Flashwars.Org.OrgDomain do

@@ -10,11 +10,16 @@ defmodule Flashwars.Content do
     resource Flashwars.Content.StudySet do
       define :get_study_set_by_id, action: :read, get_by: [:id]
       define :create_study_set, action: :create
+      define :update_study_set, action: :update
+      define :list_study_sets, action: :read
     end
 
     resource Flashwars.Content.Term do
       define :get_term_by_id, action: :read, get_by: [:id]
       define :create_term, action: :create
+      define :update_term, action: :update
+      define :destroy_term, action: :destroy
+      define :list_terms_for_study_set, action: :for_study_set
     end
 
     resource Flashwars.Content.Tag do

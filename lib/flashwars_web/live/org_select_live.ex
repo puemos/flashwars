@@ -2,6 +2,7 @@ defmodule FlashwarsWeb.OrgSelectLive do
   use FlashwarsWeb, :live_view
 
   import Ash.Query
+  alias Flashwars.Org
   alias Flashwars.Org.{Organization, OrgMembership}
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
@@ -10,15 +11,22 @@ defmodule FlashwarsWeb.OrgSelectLive do
     actor = socket.assigns.current_user
 
     orgs =
-      OrgMembership
-      |> filter(user_id == ^actor.id)
-      |> Ash.read!(actor: actor, authorize?: false)
+      Org.list_org_memberships!(
+        actor: actor,
+        authorize?: false,
+        query: [filter: [user_id: actor.id]]
+      )
       |> Enum.map(& &1.organization_id)
       |> then(fn ids ->
         if ids == [] do
           []
         else
-          Organization |> filter(id in ^ids) |> Ash.read!(actor: actor, authorize?: false)
+          # use code interface with an Ash.Query to apply `id in ^ids`
+          Org.list_organizations!(
+            actor: actor,
+            authorize?: false,
+            query: Organization |> filter(id in ^ids)
+          )
         end
       end)
 

@@ -15,7 +15,9 @@ defmodule Flashwars.Learning do
       define :upsert_leaderboard, action: :upsert
     end
 
-    resource Flashwars.Learning.Session
+    resource Flashwars.Learning.Session do
+      define :list_sessions, action: :read
+    end
 
     resource Flashwars.Learning.TermState do
       define :upsert_term_state, action: :upsert
