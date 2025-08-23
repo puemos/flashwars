@@ -93,91 +93,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     if not valid? do
       {:noreply, put_flash(socket, :error, "Name must be 1-24 characters")}
     else
-      socket =
-        case socket.assigns.current_user do
-          %{id: uid} ->
-            player_key = "user_#{uid}"
-
-            socket =
-              if socket.assigns.host? do
-                update_player_info(socket, player_key, %PlayerInfo{
-                  nickname: trimmed,
-                  user_id: to_string(uid),
-                  guest_id: nil,
-                  last_seen: DateTime.utc_now()
-                })
-              else
-                # Broadcast to host to store
-                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-                  event: :player_info_update,
-                  player_key: player_key,
-                  player_info: %PlayerInfo{
-                    nickname: trimmed,
-                    user_id: to_string(uid),
-                    guest_id: nil,
-                    last_seen: DateTime.utc_now()
-                  }
-                })
-
-                socket
-              end
-
-            # Update presence metadata for signed-in users
-            _ =
-              if presence_available?() do
-                Presence.update(
-                  self(),
-                  socket.assigns.topic,
-                  to_string(uid),
-                  fn _ -> %{name: trimmed} end
-                )
-              end
-
-            socket
-            |> assign(:my_name, trimmed)
-            |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, trimmed))
-
-          _ ->
-            # Anonymous: update using guest_id
-            guest_id = socket.assigns.guest_id || generate_guest_id()
-            player_key = "guest_#{guest_id}"
-
-            socket =
-              if socket.assigns.host? do
-                update_player_info(socket, player_key, %PlayerInfo{
-                  nickname: trimmed,
-                  user_id: nil,
-                  guest_id: guest_id,
-                  last_seen: DateTime.utc_now()
-                })
-              else
-                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-                  event: :player_info_update,
-                  player_key: player_key,
-                  player_info: %PlayerInfo{
-                    nickname: trimmed,
-                    user_id: nil,
-                    guest_id: guest_id,
-                    last_seen: DateTime.utc_now()
-                  }
-                })
-
-                socket
-              end
-
-            _ =
-              if presence_available?() and socket.assigns[:presence_key] do
-                Presence.update(
-                  self(),
-                  socket.assigns.topic,
-                  socket.assigns.presence_key,
-                  fn _ -> %{name: trimmed} end
-                )
-              end
-
-            assign(socket, :my_name, trimmed)
-        end
-
+      socket = apply_nickname(socket, trimmed)
       # Ask client to persist name locally
       {:noreply, Phoenix.LiveView.push_event(socket, "store_guest_name", %{name: trimmed})}
     end
@@ -191,89 +107,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     if not valid? do
       {:noreply, socket}
     else
-      socket =
-        case socket.assigns.current_user do
-          %{id: uid} ->
-            player_key = "user_#{uid}"
-
-            socket =
-              if socket.assigns.host? do
-                update_player_info(socket, player_key, %PlayerInfo{
-                  nickname: trimmed,
-                  user_id: to_string(uid),
-                  guest_id: nil,
-                  last_seen: DateTime.utc_now()
-                })
-              else
-                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-                  event: :player_info_update,
-                  player_key: player_key,
-                  player_info: %PlayerInfo{
-                    nickname: trimmed,
-                    user_id: to_string(uid),
-                    guest_id: nil,
-                    last_seen: DateTime.utc_now()
-                  }
-                })
-
-                socket
-              end
-
-            _ =
-              if presence_available?() do
-                Presence.update(
-                  self(),
-                  socket.assigns.topic,
-                  to_string(uid),
-                  fn _ -> %{name: trimmed} end
-                )
-              end
-
-            socket
-            |> assign(:my_name, trimmed)
-            |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, trimmed))
-
-          _ ->
-            guest_id = socket.assigns.guest_id || generate_guest_id()
-            player_key = "guest_#{guest_id}"
-
-            socket =
-              if socket.assigns.host? do
-                update_player_info(socket, player_key, %PlayerInfo{
-                  nickname: trimmed,
-                  user_id: nil,
-                  guest_id: guest_id,
-                  last_seen: DateTime.utc_now()
-                })
-              else
-                PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-                  event: :player_info_update,
-                  player_key: player_key,
-                  player_info: %PlayerInfo{
-                    nickname: trimmed,
-                    user_id: nil,
-                    guest_id: guest_id,
-                    last_seen: DateTime.utc_now()
-                  }
-                })
-
-                socket
-              end
-
-            _ =
-              if presence_available?() and socket.assigns[:presence_key] do
-                Presence.update(
-                  self(),
-                  socket.assigns.topic,
-                  socket.assigns.presence_key,
-                  fn _ -> %{name: trimmed} end
-                )
-              end
-
-            assign(socket, :my_name, trimmed)
-        end
-
-      {:noreply, socket}
+      {:noreply, apply_nickname(socket, trimmed)}
     end
   end
 
@@ -668,6 +502,90 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   # ============================================================================
   # Private Helper Functions
   # ============================================================================
+
+  # Consolidated nickname apply logic used by both set_name and guest_name_loaded events.
+  defp apply_nickname(socket, trimmed) do
+    case socket.assigns.current_user do
+      %{id: uid} ->
+        player_key = "user_#{uid}"
+
+        socket =
+          if socket.assigns.host? do
+            update_player_info(socket, player_key, %PlayerInfo{
+              nickname: trimmed,
+              user_id: to_string(uid),
+              guest_id: nil,
+              last_seen: DateTime.utc_now()
+            })
+          else
+            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+              event: :player_info_update,
+              player_key: player_key,
+              player_info: %PlayerInfo{
+                nickname: trimmed,
+                user_id: to_string(uid),
+                guest_id: nil,
+                last_seen: DateTime.utc_now()
+              }
+            })
+
+            socket
+          end
+
+        _ =
+          if presence_available?() do
+            Presence.update(
+              self(),
+              socket.assigns.topic,
+              to_string(uid),
+              fn _ -> %{name: trimmed} end
+            )
+          end
+
+        socket
+        |> assign(:my_name, trimmed)
+        |> assign(:nicknames, Map.put(socket.assigns.nicknames, uid, trimmed))
+
+      _ ->
+        guest_id = socket.assigns.guest_id || generate_guest_id()
+        player_key = "guest_#{guest_id}"
+
+        socket =
+          if socket.assigns.host? do
+            update_player_info(socket, player_key, %PlayerInfo{
+              nickname: trimmed,
+              user_id: nil,
+              guest_id: guest_id,
+              last_seen: DateTime.utc_now()
+            })
+          else
+            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+              event: :player_info_update,
+              player_key: player_key,
+              player_info: %PlayerInfo{
+                nickname: trimmed,
+                user_id: nil,
+                guest_id: guest_id,
+                last_seen: DateTime.utc_now()
+              }
+            })
+
+            socket
+          end
+
+        _ =
+          if presence_available?() and socket.assigns[:presence_key] do
+            Presence.update(
+              self(),
+              socket.assigns.topic,
+              socket.assigns.presence_key,
+              fn _ -> %{name: trimmed} end
+            )
+          end
+
+        assign(socket, :my_name, trimmed)
+    end
+  end
 
   defp allowed_to_view?(%{privacy: :public}, _user), do: true
   defp allowed_to_view?(_room, nil), do: false
