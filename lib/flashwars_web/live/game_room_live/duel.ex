@@ -276,29 +276,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
         {:noreply, socket}
 
       %{id: ^rid} = _round ->
-        # Reveal immediately for host; schedule next round after intermission
-        im = intermission_ms(socket.assigns.settings)
-        Process.send_after(self(), {:next_round, rid}, im)
-
-        {:noreply,
-         socket
-         |> assign(:round_closed?, true)
-         |> assign(
-           :answered?,
-           socket.assigns.current_user && socket.assigns.current_user.id == uid
-         )
-         |> assign(:reveal, %{
-           user_id: uid,
-           selected_index: sidx,
-           correct_index: aidx,
-           correct?: correct?
-         })
-         |> assign(:intermission_rid, rid)
-         |> assign(:ready_user_ids, MapSet.new())
-         |> start_intermission_timer(im)
-         |> assign(:round_deadline_mono, nil)
-         |> assign(:intermission_deadline_mono, System.monotonic_time(:millisecond) + im)
-         |> assign(:now_mono, nil)}
+        {:noreply, apply_round_closed(socket, rid, uid, sidx, aidx, correct?)}
 
       _ ->
         {:noreply, socket}
@@ -322,24 +300,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
         {:noreply, socket}
 
       %{id: ^rid} ->
-        {:noreply,
-         socket
-         |> assign(:round_closed?, true)
-         |> assign(:reveal, %{
-           user_id: uid,
-           selected_index: sidx,
-           correct_index: aidx,
-           correct?: correct?
-         })
-         |> assign(:intermission_rid, rid)
-         |> assign(:ready_user_ids, MapSet.new())
-         |> start_intermission_timer(intermission_ms(socket.assigns.settings))
-         |> assign(:round_deadline_mono, nil)
-         |> assign(
-           :intermission_deadline_mono,
-           System.monotonic_time(:millisecond) + intermission_ms(socket.assigns.settings)
-         )
-         |> assign(:now_mono, nil)}
+        {:noreply, apply_round_closed(socket, rid, uid, sidx, aidx, correct?)}
 
       _ ->
         {:noreply, socket}
@@ -502,6 +463,43 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   # ============================================================================
   # Private Helper Functions
   # ============================================================================
+
+  # Apply the common state changes when a round is closed, handling host vs non-host
+  # behavior (host schedules next round and sets answered? based on who answered first).
+  defp apply_round_closed(socket, rid, uid, sidx, aidx, correct?) do
+    im = intermission_ms(socket.assigns.settings)
+
+    if socket.assigns.host? do
+      Process.send_after(self(), {:next_round, rid}, im)
+    end
+
+    socket =
+      socket
+      |> assign(:round_closed?, true)
+      |> assign(:reveal, %{
+        user_id: uid,
+        selected_index: sidx,
+        correct_index: aidx,
+        correct?: correct?
+      })
+      |> assign(:intermission_rid, rid)
+      |> assign(:ready_user_ids, MapSet.new())
+      |> start_intermission_timer(im)
+      |> assign(:round_deadline_mono, nil)
+      |> assign(:intermission_deadline_mono, System.monotonic_time(:millisecond) + im)
+      |> assign(:now_mono, nil)
+
+    # Only the host should adjust :answered? here; non-hosts keep their current flag
+    if socket.assigns.host? do
+      assign(
+        socket,
+        :answered?,
+        socket.assigns.current_user && socket.assigns.current_user.id == uid
+      )
+    else
+      socket
+    end
+  end
 
   # Consolidated nickname apply logic used by both set_name and guest_name_loaded events.
   defp apply_nickname(socket, trimmed) do
