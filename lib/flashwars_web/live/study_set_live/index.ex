@@ -59,7 +59,7 @@ defmodule FlashwarsWeb.StudySetLive.Index do
           </.link>
         </:actions>
       </.header>
-      <div class="card card-body bg-base-200">
+      <div class="">
         <div :if={@study_sets == []} class="text-center py-12">
           <div class="p-4 bg-base-200 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             <.icon name="hero-book-open" class="size-8 text-base-content/40" />
@@ -71,7 +71,7 @@ defmodule FlashwarsWeb.StudySetLive.Index do
           </.link>
         </div>
 
-        <div :if={@study_sets != []} class="grid gap-4">
+        <div :if={@study_sets != []} class="grid divide-y divide-base-200">
           <.study_set_card
             :for={set <- @study_sets}
             set={set}

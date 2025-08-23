@@ -74,7 +74,7 @@ defmodule FlashwarsWeb.OrgHomeLive do
             </p>
           </div>
           <div class="hidden md:block">
-            <div class="stats bg-base-100 shadow-sm border border-base-300/30">
+            <div class="stats bg-base-300 shadow-sm border border-base-100/30">
               <div class="stat py-4 px-6">
                 <div class="stat-value text-2xl text-base-content">{length(@my_sets)}</div>
                 <div class="stat-title text-xs text-base-content/60">Study Sets</div>
@@ -105,11 +105,11 @@ defmodule FlashwarsWeb.OrgHomeLive do
       
     <!-- Quick Actions Grid -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div class="card bg-base-200 border border-base-300/50 hover:border-primary/30 transition-colors">
+        <div class="card bg-base-200 border-3 border-base-300/50 hover:border-blue-200/30 transition-colors">
           <div class="card-body p-6">
             <div class="flex items-center gap-3 mb-3">
-              <div class="p-2 bg-primary/20 rounded-lg">
-                <.icon name="hero-academic-cap" class="size-6 text-primary/80" />
+              <div class="p-2 bg-blue-200/20 rounded-lg">
+                <.icon name="hero-academic-cap" class="size-6 text-blue-200/80" />
               </div>
               <h3 class="font-semibold text-base-content">Learn Mode</h3>
             </div>
@@ -127,11 +127,11 @@ defmodule FlashwarsWeb.OrgHomeLive do
           </div>
         </div>
 
-        <div class="card bg-base-200 border border-base-300/50 hover:border-secondary/30 transition-colors">
+        <div class="card bg-base-200 border-3 border-base-300/50 hover:border-fuchsia-200/30 transition-colors">
           <div class="card-body p-6">
             <div class="flex items-center gap-3 mb-3">
-              <div class="p-2 bg-secondary/20 rounded-lg">
-                <.icon name="hero-rectangle-stack" class="size-6 text-secondary/80" />
+              <div class="p-2 bg-fuchsia-200/20 rounded-lg">
+                <.icon name="hero-rectangle-stack" class="size-6 text-fuchsia-200/80" />
               </div>
               <h3 class="font-semibold text-base-content">Flashcards</h3>
             </div>
@@ -147,11 +147,11 @@ defmodule FlashwarsWeb.OrgHomeLive do
           </div>
         </div>
 
-        <div class="card bg-base-200 border border-base-300/50 hover:border-accent/30 transition-colors">
+        <div class="card bg-base-200 border-3 border-base-300/50 hover:border-emerald-200/30 transition-colors">
           <div class="card-body p-6">
             <div class="flex items-center gap-3 mb-3">
-              <div class="p-2 bg-accent/20 rounded-lg">
-                <.icon name="hero-pencil-square" class="size-6 text-accent/80" />
+              <div class="p-2 bg-emerald-200/20 rounded-lg">
+                <.icon name="hero-pencil-square" class="size-6 text-emerald-200/80" />
               </div>
               <h3 class="font-semibold text-base-content">Test Mode</h3>
             </div>
@@ -167,11 +167,11 @@ defmodule FlashwarsWeb.OrgHomeLive do
           </div>
         </div>
 
-        <div class="card bg-base-200 border border-base-300/50 hover:border-warning/30 transition-colors">
+        <div class="card bg-base-200 border-3 border-base-300/50 hover:border-amber-200/30 transition-colors">
           <div class="card-body p-6">
             <div class="flex items-center gap-3 mb-3">
-              <div class="p-2 bg-warning/20 rounded-lg">
-                <.icon name="hero-bolt" class="size-6 text-warning/80" />
+              <div class="p-2 bg-amber-200/20 rounded-lg">
+                <.icon name="hero-bolt" class="size-6 text-amber-200/80" />
               </div>
               <h3 class="font-semibold text-base-content">Duel Mode</h3>
             </div>
@@ -191,11 +191,11 @@ defmodule FlashwarsWeb.OrgHomeLive do
       </div>
       
     <!-- Main Content Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 divide-x divide-base-200">
         <!-- Study Sets - Takes more space -->
         <div class="lg:col-span-2">
-          <div class="card bg-base-200 shadow-sm border border-base-300">
-            <div class="card-body">
+          <div class="px-2">
+            <div class="">
               <div class="flex items-center justify-between mb-4">
                 <h2 class="text-xl font-semibold flex items-center gap-2">
                   <.icon name="hero-book-open" class="size-5" /> My Study Sets
@@ -216,7 +216,7 @@ defmodule FlashwarsWeb.OrgHomeLive do
                 </.link>
               </div>
 
-              <div :if={@my_sets != []}>
+              <div :if={@my_sets != []} class="divide-y divide-base-200">
                 <.study_set_card
                   :for={set <- @my_sets}
                   set={set}
@@ -231,8 +231,8 @@ defmodule FlashwarsWeb.OrgHomeLive do
     <!-- Sidebar with Activity & Quick Info -->
         <div class="space-y-6">
           <!-- Recent Activity -->
-          <div class="card bg-base-100 shadow-sm border border-base-300">
-            <div class="card-body">
+          <div class="">
+            <div class="">
               <h3 class="text-lg font-semibold flex items-center gap-2 mb-4">
                 <.icon name="hero-clock" class="size-5" /> Recent Activity
               </h3>
@@ -263,25 +263,6 @@ defmodule FlashwarsWeb.OrgHomeLive do
                       )}
                     </p>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-    <!-- Organization Info -->
-          <div class="card bg-base-100 shadow-sm border border-base-300">
-            <div class="card-body">
-              <h3 class="text-lg font-semibold flex items-center gap-2 mb-4">
-                <.icon name="hero-building-office" class="size-5" /> Organization
-              </h3>
-              <div class="space-y-3">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-base-content/60">Name</span>
-                  <span class="font-medium">{@current_org.name}</span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-base-content/60">Study Sets</span>
-                  <span class="font-medium">{length(@my_sets)}</span>
                 </div>
               </div>
             </div>

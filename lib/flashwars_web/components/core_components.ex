@@ -551,7 +551,7 @@ defmodule FlashwarsWeb.CoreComponents do
 
   def study_set_card(assigns) do
     ~H"""
-    <div class="hover:bg-base-300 py-4 -mx-2 px-3 transition-all rounded-lg border border-transparent hover:border-base-300">
+    <div class="hover:bg-base-300/20 px-2 -mx-2 rounded py-4 transition-all">
       <div class="grid grid-cols-[1fr_auto_auto] gap-6 items-start">
         <!-- Title and metadata section -->
         <div class="min-w-0 space-y-2">
@@ -590,11 +590,13 @@ defmodule FlashwarsWeb.CoreComponents do
           >
             <!-- Progress bar -->
             <div class="flex justify-end">
-              <div class="w-36 h-2 bg-base-100 rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-gradient-to-r from-success to-success-content rounded-full transition-all duration-300"
-                  style={"width: #{@set.mastery_status.percentage}%"}
-                >
+              <div class="tooltip tooltip-bottom" data-tip={"#{@set.mastery_status.percentage}%"}>
+                <div class="w-36 h-2 bg-base-300 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-gradient-to-r from-success to-success-content rounded-full transition-all duration-300"
+                    style={"width: #{@set.mastery_status.percentage}%"}
+                  >
+                  </div>
                 </div>
               </div>
             </div>
