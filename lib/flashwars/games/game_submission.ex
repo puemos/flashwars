@@ -5,6 +5,8 @@ defmodule Flashwars.Games.GameSubmission do
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]
 
+  require Ash.Query
+
   postgres do
     table "game_submissions"
     repo Flashwars.Repo
@@ -69,6 +71,40 @@ defmodule Flashwars.Games.GameSubmission do
       end
 
       validate present(:organization_id)
+
+      # Business rule: scoring
+      # If no explicit score provided, assign 2 points to the first correct
+      # submission for a round; otherwise 0.
+      change fn changeset, _ctx ->
+        score = Ash.Changeset.get_attribute(changeset, :score)
+        correct? = Ash.Changeset.get_attribute(changeset, :correct)
+        round_id = Ash.Changeset.get_attribute(changeset, :game_round_id)
+
+        cond do
+          not is_nil(score) ->
+            changeset
+
+          correct? == true and not is_nil(round_id) ->
+            already_correct? =
+              __MODULE__
+              |> Ash.Query.filter(game_round_id == ^round_id and correct == true)
+              |> Ash.Query.limit(1)
+              |> Ash.read!(authorize?: false)
+              |> case do
+                [] -> false
+                _ -> true
+              end
+
+            Ash.Changeset.change_attribute(
+              changeset,
+              :score,
+              if(already_correct?, do: 0, else: 2)
+            )
+
+          true ->
+            Ash.Changeset.change_attribute(changeset, :score, 0)
+        end
+      end
     end
   end
 

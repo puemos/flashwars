@@ -132,29 +132,15 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           selected = Enum.at(choices, idx)
           correct? = idx == answer_index
 
-          # If we have an authenticated user, persist a submission and scoring.
+          # If we have an authenticated user, persist a submission.
+          # Scoring is handled by the GameSubmission.create action.
           if actor do
-            # Has someone already answered correctly? (authorize?: false for internal logic)
-            already_won? =
-              GameSubmission
-              |> Ash.Query.filter(game_round_id == ^round.id and correct == true)
-              |> Ash.Query.limit(1)
-              |> Ash.read!(authorize?: false)
-              |> case do
-                [] -> false
-                _ -> true
-              end
-
-            score = if correct? and not already_won?, do: 2, else: 0
-
-            # Create submission (org + room are backfilled via changeset)
             _res =
               Games.submit(
                 %{
                   game_round_id: round.id,
                   answer: selected,
                   correct: correct?,
-                  score: score,
                   submitted_at: DateTime.utc_now()
                 },
                 actor: actor
@@ -646,17 +632,9 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
      |> maybe_track_presence(topic)}
   end
 
-  # Helper to update player info using the typed struct
+  # Helper to update player info using the Ash action
   defp update_player_info(socket, player_key, player_info) do
-    current_config = socket.assigns.room.config
-
-    # Update the players map
-    updated_players = Map.put(current_config.players, player_key, player_info)
-
-    # Create new config struct with updated players
-    new_config = %{current_config | players: updated_players}
-
-    case Games.update_config(socket.assigns.room, %{config: new_config},
+    case Games.set_player_info(socket.assigns.room, player_key, player_info,
            actor: socket.assigns.current_user
          ) do
       {:ok, room} ->

@@ -8,6 +8,7 @@ defmodule Flashwars.Games do
       define :advance_state, action: :advance_state, args: [:new_state]
       define :end_game, action: :end_game
       define :update_config, action: :update_config
+      define :set_player_info, action: :set_player_info, args: [:player_key, :player_info]
     end
 
     resource Flashwars.Games.GameRound do

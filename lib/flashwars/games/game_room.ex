@@ -94,6 +94,60 @@ defmodule Flashwars.Games.GameRoom do
         end
       end
     end
+
+    # Update or insert an entry in config.players with validation
+    update :set_player_info do
+      require_atomic? false
+      argument :player_key, :string, allow_nil?: false
+      argument :player_info, :map, allow_nil?: false
+
+      change fn changeset, _ctx ->
+        key = Ash.Changeset.get_argument(changeset, :player_key)
+        info = Ash.Changeset.get_argument(changeset, :player_info)
+
+        nickname =
+          case info do
+            %Flashwars.Games.PlayerInfo{nickname: n} -> n
+            %{} = m -> m[:nickname] || m["nickname"]
+          end
+
+        trimmed = (is_binary(nickname) && String.trim(nickname)) || nil
+
+        cond do
+          is_nil(trimmed) or byte_size(trimmed) < 1 or byte_size(trimmed) > 24 ->
+            Ash.Changeset.add_error(changeset,
+              field: :player_info,
+              message: "invalid nickname"
+            )
+
+          true ->
+            cfg = changeset.data.config || %Flashwars.Games.GameRoomConfig{}
+            players = cfg.players || %{}
+
+            new_info =
+              case info do
+                %Flashwars.Games.PlayerInfo{} = s ->
+                  %{s | nickname: trimmed}
+
+                %{} = m ->
+                  %Flashwars.Games.PlayerInfo{
+                    nickname: trimmed,
+                    user_id: m[:user_id] || m["user_id"],
+                    guest_id: m[:guest_id] || m["guest_id"],
+                    joined_at: m[:joined_at] || m["joined_at"] || DateTime.utc_now(),
+                    last_seen: m[:last_seen] || m["last_seen"] || DateTime.utc_now()
+                  }
+              end
+
+            new_cfg = %Flashwars.Games.GameRoomConfig{
+              cfg
+              | players: Map.put(players, key, new_info)
+            }
+
+            Ash.Changeset.change_attribute(changeset, :config, new_cfg)
+        end
+      end
+    end
   end
 
   policies do
