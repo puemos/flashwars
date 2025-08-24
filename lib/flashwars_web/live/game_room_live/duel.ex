@@ -5,7 +5,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   require Ash.Query
 
   alias Flashwars.Games
-  alias Flashwars.Games.{GameRoom, GameSubmission, PlayerInfo, GameRoomConfig}
+  alias Flashwars.Games.{PlayerInfo, GameRoomConfig}
   alias FlashwarsWeb.Presence
 
   alias FlashwarsWeb.QuizComponents
@@ -21,7 +21,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   # ============================================================================
 
   def mount(%{"id" => id}, session, socket) do
-    case Ash.get(GameRoom, id, authorize?: false) do
+    case Games.get_game_room_by_id(id, authorize?: false) do
       {:ok, room} ->
         if allowed_to_view?(room, socket.assigns.current_user) do
           setup_for_room(room, assign(socket, :guest_id, session["guest_id"]))
@@ -36,9 +36,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   def mount(%{"token" => token}, session, socket) do
     room =
-      GameRoom
-      |> Ash.Query.for_read(:with_link_token, %{token: token})
-      |> Ash.read!(authorize?: false)
+      Games.list_game_rooms!(
+        authorize?: false,
+        query: [filter: [privacy: :link_only, link_token: token], limit: 1]
+      )
       |> List.first()
 
     if room do
@@ -216,15 +217,17 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     rid = socket.assigns.room.id
 
     # Delete submissions and rounds for this room (org constraints checked internally)
-    Flashwars.Games.GameSubmission
-    |> Ash.Query.filter(game_room_id == ^rid)
-    |> Ash.read!(authorize?: false)
-    |> Enum.each(fn s -> Ash.destroy!(s, authorize?: false) end)
+    Games.list_submissions!(
+      authorize?: false,
+      query: [filter: [game_room_id: rid]]
+    )
+    |> Enum.each(fn s -> Games.destroy_submission!(s, authorize?: false) end)
 
-    Flashwars.Games.GameRound
-    |> Ash.Query.filter(game_room_id == ^rid)
-    |> Ash.read!(authorize?: false)
-    |> Enum.each(fn r -> Ash.destroy!(r, authorize?: false) end)
+    Games.list_rounds!(
+      authorize?: false,
+      query: [filter: [game_room_id: rid]]
+    )
+    |> Enum.each(fn r -> Games.destroy_round!(r, authorize?: false) end)
 
     {:ok, room} = Games.advance_state(socket.assigns.room, :lobby, actor: actor)
 
@@ -582,15 +585,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   end
 
   defp org_member?(org_id, user_id) do
-    alias Flashwars.Org.OrgMembership
-
-    OrgMembership
-    |> Ash.Query.filter(organization_id == ^org_id and user_id == ^user_id)
-    |> Ash.read!(authorize?: false)
-    |> case do
-      [] -> false
-      _ -> true
-    end
+    Flashwars.Org.member?(org_id, user_id)
   end
 
   defp setup_for_room(room, socket) do
@@ -599,11 +594,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
     # Load latest round without auth to support link-only guests from other orgs
     current_round =
-      Flashwars.Games.GameRound
-      |> Ash.Query.filter(game_room_id == ^room.id)
-      |> Ash.Query.sort(number: :desc)
-      |> Ash.Query.limit(1)
-      |> Ash.read!(authorize?: false)
+      Games.list_rounds!(
+        authorize?: false,
+        query: [filter: [game_room_id: room.id], sort: [number: :desc], limit: 1]
+      )
       |> List.first()
 
     {:ok,
@@ -811,10 +805,11 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   defp fetch_scoreboard(room, actor) do
     subs =
-      GameSubmission
-      |> Ash.Query.filter(game_room_id == ^room.id)
-      |> Ash.read!(actor: actor)
-      |> Ash.load!([:user], actor: actor)
+      Games.list_submissions!(
+        actor: actor,
+        query: [filter: [game_room_id: room.id]],
+        load: [:user]
+      )
 
     subs
     |> Enum.group_by(& &1.user_id)

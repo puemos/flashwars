@@ -2,7 +2,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   use FlashwarsWeb, :live_view
 
   alias Flashwars.Content
-  alias Flashwars.Content.{StudySet, Term}
+  alias Flashwars.Content.StudySet
   alias Flashwars.Learning
   alias Flashwars.Learning.Engine
   alias Flashwars.Games
@@ -115,7 +115,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
 
   @impl true
   def handle_event("edit", %{"id" => id}, socket) do
-    case Ash.get(Term, id, actor: socket.assigns.current_user) do
+    case Content.get_term_by_id(id, actor: socket.assigns.current_user) do
       {:ok, term} ->
         edit_form = to_form(%{"term" => term.term, "definition" => term.definition}, as: :edit)
         {:noreply, socket |> assign(:editing_id, id) |> assign(:edit_form, edit_form)}
@@ -132,15 +132,13 @@ defmodule FlashwarsWeb.StudySetLive.Show do
 
   @impl true
   def handle_event("save_edit", %{"edit" => params, "_row_id" => id}, socket) do
-    with {:ok, term} <- Ash.get(Term, id, actor: socket.assigns.current_user),
+    with {:ok, term} <- Content.get_term_by_id(id, actor: socket.assigns.current_user),
          {:ok, _updated} <-
-           term
-           |> Ash.Changeset.for_update(
-             :update,
+           Content.update_term(
+             term,
              %{term: params["term"], definition: params["definition"]},
              actor: socket.assigns.current_user
-           )
-           |> Ash.update(),
+           ),
          {:ok, refreshed} <- read_terms(socket.assigns.study_set, socket.assigns.current_user) do
       {:noreply,
        socket
@@ -155,8 +153,8 @@ defmodule FlashwarsWeb.StudySetLive.Show do
 
   @impl true
   def handle_event("delete", %{"id" => id}, socket) do
-    with {:ok, term} <- Ash.get(Term, id, actor: socket.assigns.current_user),
-         {:ok, _} <- Ash.destroy(term, actor: socket.assigns.current_user),
+    with {:ok, term} <- Content.get_term_by_id(id, actor: socket.assigns.current_user),
+         {:ok, _} <- Content.destroy_term(term, actor: socket.assigns.current_user),
          {:ok, refreshed} <- read_terms(socket.assigns.study_set, socket.assigns.current_user) do
       {:noreply,
        socket
@@ -221,13 +219,15 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   @impl true
   def handle_event("save_privacy", %{"set" => %{"privacy" => priv}}, socket) do
     with {:ok, set} <-
-           Ash.get(StudySet, socket.assigns.study_set.id, actor: socket.assigns.current_user),
-         {:ok, updated} <-
-           set
-           |> Ash.Changeset.for_update(:update, %{privacy: String.to_existing_atom(priv)},
+           Content.get_study_set_by_id(socket.assigns.study_set.id,
              actor: socket.assigns.current_user
-           )
-           |> Ash.update() do
+           ),
+         {:ok, updated} <-
+           Content.update_study_set(
+             set,
+             %{privacy: String.to_existing_atom(priv)},
+             actor: socket.assigns.current_user
+           ) do
       {:noreply,
        socket
        |> assign(:study_set, updated)
@@ -283,9 +283,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   defp status_match?(_needed, _actual), do: false
 
   defp read_terms(%StudySet{id: id}, actor) do
-    Term
-    |> Ash.Query.for_read(:for_study_set, %{study_set_id: id})
-    |> Ash.read(actor: actor)
+    Content.list_terms_for_study_set(%{study_set_id: id}, actor: actor)
   end
 
   defp mastery_map(nil, _set_id), do: %{}

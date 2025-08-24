@@ -1,9 +1,8 @@
 defmodule FlashwarsWeb.OrgHomeLive do
   use FlashwarsWeb, :live_view
 
-  import Ash.Query
-  alias Flashwars.Content.StudySet
-  alias Flashwars.Learning.Session
+  alias Flashwars.Content
+  alias Flashwars.Learning
   alias Flashwars.Learning.Mastery
   alias Flashwars.Games
 
@@ -15,11 +14,14 @@ defmodule FlashwarsWeb.OrgHomeLive do
     org = socket.assigns.current_org
 
     my_sets =
-      StudySet
-      |> filter(owner_id == ^actor.id and organization_id == ^org.id)
-      |> sort(updated_at: :desc)
-      |> limit(6)
-      |> Ash.read!(actor: actor)
+      Content.list_study_sets!(
+        actor: actor,
+        query: [
+          filter: [owner_id: actor.id, organization_id: org.id],
+          sort: [updated_at: :desc],
+          limit: 6
+        ]
+      )
 
     # Calculate mastery status for each study set
     sets_with_mastery =
@@ -45,11 +47,15 @@ defmodule FlashwarsWeb.OrgHomeLive do
       end)
 
     recent_sessions =
-      Session
-      |> filter(user_id == ^actor.id and organization_id == ^org.id)
-      |> sort(updated_at: :desc)
-      |> limit(6)
-      |> Ash.read!(actor: actor, load: [:study_set])
+      Learning.list_sessions!(
+        actor: actor,
+        query: [
+          filter: [user_id: actor.id, organization_id: org.id],
+          sort: [updated_at: :desc],
+          limit: 6
+        ],
+        load: [:study_set]
+      )
 
     {:ok,
      socket

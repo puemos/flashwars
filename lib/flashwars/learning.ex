@@ -17,10 +17,14 @@ defmodule Flashwars.Learning do
 
     resource Flashwars.Learning.Session do
       define :list_sessions, action: :read
+      define :upsert_session, action: :upsert
+      define :list_sessions_for_user_set_mode, action: :for_user_set_mode
     end
 
     resource Flashwars.Learning.TermState do
       define :upsert_term_state, action: :upsert
+      define :list_term_states, action: :read
+      define :list_term_states_for_user_set, action: :for_user_set
     end
   end
 
@@ -43,14 +47,15 @@ defmodule Flashwars.Learning do
     now = DateTime.utc_now()
 
     # resolve term + set
-    term = Ash.get!(Flashwars.Content.Term, term_id, authorize?: false)
+    term = Flashwars.Content.get_term_by_id!(term_id, authorize?: false)
     set_id = term.study_set_id
 
     # load or init term state
     cs_existing =
-      Flashwars.Learning.TermState
-      |> Ash.Query.filter(user_id == ^user.id and term_id == ^term_id)
-      |> Ash.read!(authorize?: false)
+      __MODULE__.list_term_states!(
+        authorize?: false,
+        query: [filter: [user_id: user.id, term_id: term_id], limit: 1]
+      )
       |> List.first()
 
     cs_map =
@@ -77,13 +82,10 @@ defmodule Flashwars.Learning do
            Flashwars.Learning.Scheduler.schedule_after_review(cs_map, grade, rt_ms, now) do
       # upsert term state
       _cs =
-        Flashwars.Learning.TermState
-        |> Ash.Changeset.for_create(
-          :upsert,
+        __MODULE__.upsert_term_state!(
           Map.merge(update, %{term_id: term_id, study_set_id: set_id}),
           actor: user
         )
-        |> Ash.create!(actor: user)
 
       # ensure attempt
       attempt_id =

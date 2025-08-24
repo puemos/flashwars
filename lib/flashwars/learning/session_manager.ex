@@ -200,9 +200,7 @@ defmodule Flashwars.Learning.SessionManager do
   def save_session(user, study_set_id, mode, state) do
     now = DateTime.utc_now()
 
-    Learning.Session
-    |> Ash.Changeset.for_create(
-      :upsert,
+    Learning.upsert_session(
       %{
         study_set_id: study_set_id,
         mode: mode,
@@ -211,7 +209,6 @@ defmodule Flashwars.Learning.SessionManager do
       },
       actor: user
     )
-    |> Ash.create(actor: user)
   end
 
   @spec load_recent_session(map(), String.t(), atom()) ::
@@ -220,12 +217,14 @@ defmodule Flashwars.Learning.SessionManager do
     cutoff = DateTime.add(DateTime.utc_now(), -@recent_window_hours, :hour)
 
     with {:ok, [session]} <-
-           Learning.Session
-           |> Ash.Query.for_read(:for_user_set_mode, %{study_set_id: study_set_id, mode: mode},
-             actor: user
-           )
-           |> Ash.Query.filter(last_saved_at >= ^cutoff)
-           |> Ash.read(limit: 1, actor: user) do
+           Learning.list_sessions_for_user_set_mode(
+             %{study_set_id: study_set_id, mode: mode},
+             actor: user,
+             query:
+               Learning.Session
+               |> Ash.Query.filter(last_saved_at >= ^cutoff)
+               |> Ash.Query.limit(1)
+           ) do
       case session.state do
         %SessionState{} = st ->
           {:ok, st}

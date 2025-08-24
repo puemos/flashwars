@@ -11,6 +11,7 @@ defmodule Flashwars.Games do
       define :set_player_info, action: :set_player_info, args: [:player_key, :player_info]
       define :get_game_room_by_id, action: :read, get_by: [:id]
       define :get_game_room_by_token, action: :with_link_token, get_by: [:link_token]
+      define :list_game_rooms, action: :read
     end
 
     resource Flashwars.Games.GameRound do

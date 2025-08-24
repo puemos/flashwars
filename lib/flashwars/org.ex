@@ -1,7 +1,6 @@
 defmodule Flashwars.Org do
   use Ash.Domain, otp_app: :flashwars
   require Ash.Expr
-  require Ash.Query
 
   resources do
     resource Flashwars.Org.Organization do
@@ -28,25 +27,22 @@ defmodule Flashwars.Org do
   """
   @spec ensure_default_org_for(struct()) :: :ok | {:error, term()}
   def ensure_default_org_for(%{id: user_id, email: email} = user) do
-    alias Flashwars.Org.{Organization, OrgMembership}
-
     has_membership? =
-      OrgMembership
-      |> Ash.Query.filter(Ash.Expr.expr(user_id == ^user_id))
-      |> Ash.exists?(actor: user, authorize?: false)
+      list_org_memberships!(
+        actor: user,
+        authorize?: false,
+        query: [filter: [user_id: user_id], limit: 1]
+      )
+      |> Enum.any?()
 
     if has_membership? do
       :ok
     else
       name = default_org_name(email)
 
-      with {:ok, org} <-
-             Ash.create(Organization, %{name: name}, action: :create, authorize?: false),
+      with {:ok, org} <- create_organization(%{name: name}, authorize?: false),
            {:ok, _mem} <-
-             Ash.create(
-               OrgMembership,
-               %{organization_id: org.id, user_id: user_id, role: :admin},
-               action: :create,
+             add_member(%{organization_id: org.id, user_id: user_id, role: :admin},
                authorize?: false
              ) do
         :ok
@@ -63,5 +59,35 @@ defmodule Flashwars.Org do
     email = to_string(email)
     local = email |> String.split("@", parts: 2) |> List.first()
     "#{local}'s Organization"
+  end
+
+  @doc "Returns true if user_id is a member of org_id."
+  @spec member?(String.t(), String.t(), keyword) :: boolean
+  def member?(org_id, user_id, opts \\ []) do
+    list_org_memberships!(
+      Keyword.merge(
+        [
+          authorize?: false,
+          query: [filter: [organization_id: org_id, user_id: user_id], limit: 1]
+        ],
+        opts
+      )
+    )
+    |> Enum.any?()
+  end
+
+  @doc "Returns true if user_id is an admin member of org_id."
+  @spec admin_member?(String.t(), String.t(), keyword) :: boolean
+  def admin_member?(org_id, user_id, opts \\ []) do
+    list_org_memberships!(
+      Keyword.merge(
+        [
+          authorize?: false,
+          query: [filter: [organization_id: org_id, user_id: user_id, role: :admin], limit: 1]
+        ],
+        opts
+      )
+    )
+    |> Enum.any?()
   end
 end

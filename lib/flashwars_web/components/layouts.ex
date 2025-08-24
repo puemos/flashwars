@@ -5,7 +5,8 @@ defmodule FlashwarsWeb.Layouts do
   """
   use FlashwarsWeb, :html
   import Ash.Query
-  alias Flashwars.Org.{Organization, OrgMembership}
+  alias Flashwars.Org
+  alias Flashwars.Org.Organization
 
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
@@ -48,15 +49,22 @@ defmodule FlashwarsWeb.Layouts do
             []
 
           user ->
-            OrgMembership
-            |> filter(user_id == ^user.id)
-            |> Ash.read!(actor: user, authorize?: false)
+            Org.list_org_memberships!(
+              actor: user,
+              authorize?: false,
+              query: [filter: [user_id: user.id]]
+            )
             |> Enum.map(& &1.organization_id)
             |> then(fn ids ->
               if ids == [] do
                 []
               else
-                Organization |> filter(id in ^ids) |> Ash.read!(actor: user, authorize?: false)
+                # Pass an Ash.Query struct to the code interface
+                Org.list_organizations!(
+                  actor: user,
+                  authorize?: false,
+                  query: Organization |> filter(id in ^ids)
+                )
               end
             end)
         end

@@ -23,6 +23,7 @@ defmodule Flashwars.Learning.Engine do
   require Ash.Query
   require Logger
 
+  alias Flashwars.Content
   alias Flashwars.Content.Term
   alias Flashwars.Learning.Scheduler
 
@@ -289,15 +290,17 @@ defmodule Flashwars.Learning.Engine do
   end
 
   defp fetch_study_set_terms(study_set_id) do
-    Term
-    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-    |> Ash.read!(authorize?: false)
+    Content.list_terms_for_study_set!(
+      %{study_set_id: study_set_id},
+      authorize?: false
+    )
   end
 
   defp fetch_study_set_terms(study_set_id, actor) do
-    Term
-    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: actor)
-    |> Ash.read!(actor: actor)
+    Content.list_terms_for_study_set!(
+      %{study_set_id: study_set_id},
+      actor: actor
+    )
   end
 
   defp select_scheduled_term(user, study_set_id, exclude_ids) do
@@ -306,7 +309,7 @@ defmodule Flashwars.Learning.Engine do
     |> Enum.find(&(not MapSet.member?(exclude_ids, &1.term_id)))
     |> case do
       %{term_id: term_id} ->
-        term = Ash.get!(Term, term_id, authorize?: false)
+        term = Content.get_term_by_id!(term_id, authorize?: false)
         {:ok, term}
 
       nil ->
@@ -493,12 +496,15 @@ defmodule Flashwars.Learning.Engine do
   defp extract_term_id(_), do: nil
 
   defp query_flashcard_term(study_set_id, user, exclude_list, sort_order) do
-    case Term
-         |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
-         |> Ash.Query.filter(id not in ^exclude_list)
-         |> Ash.Query.sort(sort_order)
-         |> Ash.Query.limit(1)
-         |> Ash.read!(actor: user)
+    case Content.list_terms_for_study_set!(
+           %{study_set_id: study_set_id},
+           actor: user,
+           query:
+             Term
+             |> Ash.Query.filter(id not in ^exclude_list)
+             |> Ash.Query.sort(sort_order)
+             |> Ash.Query.limit(1)
+         )
          |> List.first() do
       nil -> :no_term_available
       term -> {:ok, term}
@@ -551,10 +557,13 @@ defmodule Flashwars.Learning.Engine do
   defp get_prioritized_terms(_user, study_set_id, %{exclude_ids: exclude_ids}) do
     exclude_list = MapSet.to_list(exclude_ids)
 
-    Term
-    |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-    |> Ash.Query.filter(id not in ^exclude_list)
-    |> Ash.read!(authorize?: false)
+    Content.list_terms_for_study_set!(
+      %{study_set_id: study_set_id},
+      authorize?: false,
+      query:
+        Term
+        |> Ash.Query.filter(id not in ^exclude_list)
+    )
   end
 
   defp get_test_terms(nil, study_set_id, %{exclude_ids: exclude_ids}) do
@@ -574,10 +583,13 @@ defmodule Flashwars.Learning.Engine do
     exclude_list = MapSet.to_list(config.exclude_ids)
 
     all_terms =
-      Term
-      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, authorize?: false)
-      |> Ash.Query.filter(id not in ^exclude_list)
-      |> Ash.read!(authorize?: false)
+      Content.list_terms_for_study_set!(
+        %{study_set_id: study_set_id},
+        authorize?: false,
+        query:
+          Term
+          |> Ash.Query.filter(id not in ^exclude_list)
+      )
 
     queue_states =
       Scheduler.build_daily_queue(user, study_set_id, config.size * @default_queue_multiplier)

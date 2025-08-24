@@ -3,7 +3,7 @@ defmodule FlashwarsWeb.OrgSelectLive do
 
   import Ash.Query
   alias Flashwars.Org
-  alias Flashwars.Org.{Organization, OrgMembership}
+  alias Flashwars.Org.Organization
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
 

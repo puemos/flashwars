@@ -6,8 +6,8 @@ defmodule Flashwars.Learning.Scheduler do
   relearning steps, growth caps, and queue building helpers.
   """
 
+  alias Flashwars.Learning
   alias Flashwars.Learning.TermState
-  require Ash.Query
 
   @r_star 0.80
   @s_min 0.10
@@ -116,9 +116,10 @@ defmodule Flashwars.Learning.Scheduler do
 
     # existing states due
     due_states =
-      TermState
-      |> Ash.Query.for_read(:for_user_set, %{study_set_id: study_set_id}, actor: user)
-      |> Ash.read!(actor: user)
+      Learning.list_term_states_for_user_set!(
+        %{study_set_id: study_set_id},
+        actor: user
+      )
       |> Enum.filter(fn cs ->
         is_nil(cs.next_due_at) or DateTime.compare(cs.next_due_at, now) != :gt
       end)
@@ -147,15 +148,17 @@ defmodule Flashwars.Learning.Scheduler do
   defp unseen_cards(user, study_set_id) do
     # all terms in set
     terms =
-      Flashwars.Content.Term
-      |> Ash.Query.for_read(:for_study_set, %{study_set_id: study_set_id}, actor: user)
-      |> Ash.read!(actor: user)
+      Flashwars.Content.list_terms_for_study_set!(
+        %{study_set_id: study_set_id},
+        actor: user
+      )
 
     # existing states map
     states =
-      TermState
-      |> Ash.Query.for_read(:for_user_set, %{study_set_id: study_set_id}, actor: user)
-      |> Ash.read!(actor: user)
+      Learning.list_term_states_for_user_set!(
+        %{study_set_id: study_set_id},
+        actor: user
+      )
       |> Map.new(&{&1.term_id, true})
 
     terms

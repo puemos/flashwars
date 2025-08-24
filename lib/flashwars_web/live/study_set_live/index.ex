@@ -1,8 +1,7 @@
 defmodule FlashwarsWeb.StudySetLive.Index do
   use FlashwarsWeb, :live_view
 
-  import Ash.Query
-  alias Flashwars.Content.StudySet
+  alias Flashwars.Content
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_member}
@@ -12,10 +11,11 @@ defmodule FlashwarsWeb.StudySetLive.Index do
     org = socket.assigns.current_org
 
     study_sets =
-      StudySet
-      |> filter(organization_id == ^org.id)
-      |> sort(updated_at: :desc)
-      |> Ash.read!(actor: actor, load: [:owner])
+      Content.list_study_sets!(
+        actor: actor,
+        query: [filter: [organization_id: org.id], sort: [updated_at: :desc]],
+        load: [:owner]
+      )
 
     # Add mastery status to study sets
     sets_with_mastery =

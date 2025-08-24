@@ -2,15 +2,16 @@ defmodule FlashwarsWeb.AuthRedirects do
   @moduledoc """
   Determines post-login redirect destinations based on org membership.
   """
-  import Ash.Query
-  alias Flashwars.Org.OrgMembership
+  alias Flashwars.Org
 
   @spec path_for_user(struct()) :: String.t()
   def path_for_user(%{id: user_id} = actor) do
     org_ids =
-      OrgMembership
-      |> filter(user_id == ^user_id)
-      |> Ash.read!(actor: actor, authorize?: false)
+      Org.list_org_memberships!(
+        actor: actor,
+        authorize?: false,
+        query: [filter: [user_id: user_id]]
+      )
       |> Enum.map(& &1.organization_id)
 
     case org_ids do
