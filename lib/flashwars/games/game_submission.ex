@@ -106,6 +106,11 @@ defmodule Flashwars.Games.GameSubmission do
         end
       end
     end
+
+    read :for_room do
+      argument :game_room_id, :uuid, allow_nil?: false
+      filter expr(game_room_id == ^arg(:game_room_id))
+    end
   end
 
   policies do

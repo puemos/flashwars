@@ -11,11 +11,7 @@ defmodule FlashwarsWeb.OrgSelectLive do
     actor = socket.assigns.current_user
 
     orgs =
-      Org.list_org_memberships!(
-        actor: actor,
-        authorize?: false,
-        query: [filter: [user_id: actor.id]]
-      )
+      Org.list_org_memberships_for_user!(actor.id, actor: actor, authorize?: false)
       |> Enum.map(& &1.organization_id)
       |> then(fn ids ->
         if ids == [] do

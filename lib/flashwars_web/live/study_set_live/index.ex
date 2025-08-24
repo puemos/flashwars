@@ -11,11 +11,7 @@ defmodule FlashwarsWeb.StudySetLive.Index do
     org = socket.assigns.current_org
 
     study_sets =
-      Content.list_study_sets!(
-        actor: actor,
-        query: [filter: [organization_id: org.id], sort: [updated_at: :desc]],
-        load: [:owner]
-      )
+      Content.list_study_sets_for_org!(org.id, actor: actor, load: [:owner])
 
     # Add mastery status to study sets
     sets_with_mastery =

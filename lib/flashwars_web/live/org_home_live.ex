@@ -14,13 +14,9 @@ defmodule FlashwarsWeb.OrgHomeLive do
     org = socket.assigns.current_org
 
     my_sets =
-      Content.list_study_sets!(
+      Content.list_study_sets_for_org!(org.id,
         actor: actor,
-        query: [
-          filter: [owner_id: actor.id, organization_id: org.id],
-          sort: [updated_at: :desc],
-          limit: 6
-        ]
+        query: [filter: [owner_id: actor.id], limit: 6]
       )
 
     # Calculate mastery status for each study set

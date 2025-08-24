@@ -49,11 +49,7 @@ defmodule FlashwarsWeb.Layouts do
             []
 
           user ->
-            Org.list_org_memberships!(
-              actor: user,
-              authorize?: false,
-              query: [filter: [user_id: user.id]]
-            )
+            Org.list_org_memberships_for_user!(user.id, actor: user, authorize?: false)
             |> Enum.map(& &1.organization_id)
             |> then(fn ids ->
               if ids == [] do

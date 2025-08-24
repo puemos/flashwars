@@ -20,6 +20,17 @@ defmodule Flashwars.Org.OrgMembership do
     update :set_role do
       accept [:role]
     end
+
+    read :for_user do
+      argument :user_id, :uuid, allow_nil?: false
+      filter expr(user_id == ^arg(:user_id))
+    end
+
+    read :for_org_and_user do
+      argument :organization_id, :uuid, allow_nil?: false
+      argument :user_id, :uuid, allow_nil?: false
+      filter expr(organization_id == ^arg(:organization_id) and user_id == ^arg(:user_id))
+    end
   end
 
   policies do

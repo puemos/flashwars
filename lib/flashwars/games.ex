@@ -17,12 +17,15 @@ defmodule Flashwars.Games do
     resource Flashwars.Games.GameRound do
       define :generate_round, action: :generate_for_room
       define :list_rounds, action: :read
+      define :list_rounds_for_room, action: :for_room, args: [:game_room_id]
+      define :get_latest_round_for_room, action: :latest_for_room, args: [:game_room_id]
       define :destroy_round, action: :destroy
     end
 
     resource Flashwars.Games.GameSubmission do
       define :submit, action: :create
       define :list_submissions, action: :read
+      define :list_submissions_for_room, action: :for_room, args: [:game_room_id]
       define :destroy_submission, action: :destroy
     end
   end

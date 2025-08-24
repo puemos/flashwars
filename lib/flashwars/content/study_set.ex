@@ -64,6 +64,12 @@ defmodule Flashwars.Content.StudySet do
       argument :token, :string, allow_nil?: false
       filter expr(privacy == :link_only and link_token == ^arg(:token))
     end
+
+    read :for_org do
+      argument :organization_id, :uuid, allow_nil?: false
+      filter expr(organization_id == ^arg(:organization_id))
+      prepare build(sort: [updated_at: :desc])
+    end
   end
 
   policies do

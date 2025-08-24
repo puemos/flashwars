@@ -217,16 +217,10 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     rid = socket.assigns.room.id
 
     # Delete submissions and rounds for this room (org constraints checked internally)
-    Games.list_submissions!(
-      authorize?: false,
-      query: [filter: [game_room_id: rid]]
-    )
+    Games.list_submissions_for_room!(rid, authorize?: false)
     |> Enum.each(fn s -> Games.destroy_submission!(s, authorize?: false) end)
 
-    Games.list_rounds!(
-      authorize?: false,
-      query: [filter: [game_room_id: rid]]
-    )
+    Games.list_rounds_for_room!(rid, authorize?: false)
     |> Enum.each(fn r -> Games.destroy_round!(r, authorize?: false) end)
 
     {:ok, room} = Games.advance_state(socket.assigns.room, :lobby, actor: actor)
@@ -594,10 +588,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
     # Load latest round without auth to support link-only guests from other orgs
     current_round =
-      Games.list_rounds!(
-        authorize?: false,
-        query: [filter: [game_room_id: room.id], sort: [number: :desc], limit: 1]
-      )
+      Games.get_latest_round_for_room!(room.id, authorize?: false)
       |> List.first()
 
     {:ok,
@@ -805,11 +796,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   defp fetch_scoreboard(room, actor) do
     subs =
-      Games.list_submissions!(
-        actor: actor,
-        query: [filter: [game_room_id: room.id]],
-        load: [:user]
-      )
+      Games.list_submissions_for_room!(room.id, actor: actor, load: [:user])
 
     subs
     |> Enum.group_by(& &1.user_id)

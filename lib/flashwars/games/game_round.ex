@@ -109,6 +109,18 @@ defmodule Flashwars.Games.GameRound do
       filter expr(game_room.privacy == :link_only and game_room.link_token == ^arg(:token))
       prepare build(sort: [number: :asc])
     end
+
+    read :for_room do
+      argument :game_room_id, :uuid, allow_nil?: false
+      filter expr(game_room_id == ^arg(:game_room_id))
+      prepare build(sort: [number: :asc])
+    end
+
+    read :latest_for_room do
+      argument :game_room_id, :uuid, allow_nil?: false
+      filter expr(game_room_id == ^arg(:game_room_id))
+      prepare build(sort: [number: :desc], limit: 1)
+    end
   end
 
   policies do

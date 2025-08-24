@@ -12,6 +12,7 @@ defmodule Flashwars.Content do
       define :create_study_set, action: :create
       define :update_study_set, action: :update
       define :list_study_sets, action: :read
+      define :list_study_sets_for_org, action: :for_org, args: [:organization_id]
     end
 
     resource Flashwars.Content.Term do

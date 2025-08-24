@@ -12,6 +12,11 @@ defmodule Flashwars.Org do
     resource Flashwars.Org.OrgMembership do
       define :add_member, action: :create
       define :list_org_memberships, action: :read
+      define :list_org_memberships_for_user, action: :for_user, args: [:user_id]
+
+      define :list_org_memberships_for_org_and_user,
+        action: :for_org_and_user,
+        args: [:organization_id, :user_id]
     end
 
     resource Flashwars.Org.OrgDomain do
