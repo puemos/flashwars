@@ -118,7 +118,12 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     case Content.get_term_by_id(id, actor: socket.assigns.current_user) do
       {:ok, term} ->
         edit_form = to_form(%{"term" => term.term, "definition" => term.definition}, as: :edit)
-        {:noreply, socket |> assign(:editing_id, id) |> assign(:edit_form, edit_form)}
+
+        {:noreply,
+         socket
+         |> assign(:editing_id, id)
+         |> assign(:edit_form, edit_form)
+         |> stream_insert(:terms, term)}
 
       _ ->
         {:noreply, socket}
@@ -126,8 +131,19 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   end
 
   @impl true
-  def handle_event("cancel_edit", _params, socket) do
-    {:noreply, socket |> assign(:editing_id, nil) |> assign(:edit_form, nil)}
+  def handle_event("cancel_edit", params, socket) do
+    socket = socket |> assign(:editing_id, nil) |> assign(:edit_form, nil)
+
+    case params do
+      %{"id" => id} ->
+        case Content.get_term_by_id(id, actor: socket.assigns.current_user) do
+          {:ok, term} -> {:noreply, stream_insert(socket, :terms, term)}
+          _ -> {:noreply, socket}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -275,9 +291,15 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   @impl true
   def handle_event("noop", _params, socket), do: {:noreply, socket}
 
+  def handle_event("copied", _params, socket), do: {:noreply, put_flash(socket, :info, "Copied!")}
+
   # =============================
   # Helpers
   # =============================
+  defp format_privacy(:public), do: "Public"
+  defp format_privacy(:private), do: "Private"
+  defp format_privacy(:link_only), do: "Private"
+
   defp status_match?(:all, _), do: true
   defp status_match?(status, status), do: true
   defp status_match?(_needed, _actual), do: false
@@ -327,19 +349,36 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
       <!-- Header with privacy + count -->
       <.header>
-        {@study_set.name}
-        <:subtitle>
-          <span class="inline-flex items-center gap-2">
-            <span class="badge uppercase">{Atom.to_string(@study_set.privacy)}</span>
-            <span class="opacity-70">• {@terms_count} terms</span>
-          </span>
-        </:subtitle>
+        <span class="inline-flex items-center gap-2">
+          {@study_set.name}
+          <span class="opacity-70 text-xs">• {@terms_count} terms</span>
+          <span class="badge">{format_privacy(@study_set.privacy)}</span>
+        </span>
         <:actions>
           <div class="flex gap-2">
-            <.button phx-click="open_share" class="btn btn-sm">Share</.button>
-            <.button phx-click="create_duel" variant="primary" class="btn btn-sm">
+            <!-- --- Share, Create Duel, Learn, Test, Flashcards buttons -->
+            <%!-- <.link
+              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/learn"}
+              class="btn"
+            >
+              Learn
+            </.link>
+            <.link
+              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/flashcards"}
+              class="btn"
+            >
+              Flashcards
+            </.link>
+            <.link
+              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/test"}
+              class="btn"
+            >
+              Test
+            </.link>
+            <.button phx-click="create_duel" variant="primary" class="btn">
               Create Duel
-            </.button>
+            </.button> --%>
+            <.button phx-click="open_share" class="btn">Share</.button>
           </div>
         </:actions>
       </.header>
@@ -353,10 +392,10 @@ defmodule FlashwarsWeb.StudySetLive.Show do
         phx-key="escape"
       >
         <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/50" phx-click="close_share"></div>
+        <div class="absolute inset-0 bg-black/60" phx-click="close_share"></div>
         
     <!-- Dialog -->
-        <div class="relative w-full max-w-lg rounded-2xl bg-base-100 p-6 shadow-xl">
+        <div class="relative w-full max-w-xl rounded-2xl bg-base-100 p-6 shadow-xl">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold">Share settings</h3>
             <button class="btn btn-sm btn-ghost" phx-click="close_share">✕</button>
@@ -383,7 +422,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
               <.button class="btn mb-2">Save</.button>
             </.form>
 
-            <div :if={@study_set.privacy == :link_only} class="rounded-lg bg-base-200 p-4">
+            <div :if={@study_set.privacy == :link_only} class="">
               <label class="text-sm font-medium mb-2 block">Shareable link</label>
               <% share_link =
                 FlashwarsWeb.Endpoint.url() <>
@@ -420,37 +459,10 @@ defmodule FlashwarsWeb.StudySetLive.Show do
 
       <div class="grid grid-cols-12 gap-6">
         <!-- Sidebar -->
-        <aside class="col-span-12 md:col-span-2 space-y-2">
-          <.link
-            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/learn"}
-            class="btn w-full justify-start"
-          >
-            Learn
-          </.link>
-          <.link
-            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/flashcards"}
-            class="btn w-full justify-start"
-          >
-            Flashcards
-          </.link>
-          <.link
-            navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/test"}
-            class="btn w-full justify-start"
-          >
-            Test
-          </.link>
-          <button
-            type="button"
-            class="btn w-full justify-start"
-            disabled
-            title="Coming soon"
-          >
-            Match
-          </button>
-        </aside>
-        
+
+
     <!-- Main content -->
-        <main class="col-span-12 md:col-span-10 space-y-6">
+        <main class="col-span-12 space-y-6">
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-full">
               <!-- Add Terms Forms -->
@@ -461,7 +473,6 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                     <div :if={@preview_card} class="w-full">
                       <div class="flex items-center justify-between">
                         <div class="text-sm opacity-70">Term</div>
-                        <div class="text-xs opacity-60">Preview</div>
                       </div>
                       <h3 class="text-2xl font-semibold">{@preview_card.front}</h3>
                       <div class="mt-4 grid grid-cols-2 gap-3">
@@ -479,6 +490,99 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                   </div>
                 </div>
 
+                <div class="col-span-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div class="card bg-base-200 border-3 border-base-300/50 hover:border-blue-200/30 transition-colors">
+                    <div class="card-body p-6">
+                      <div class="flex items-center gap-3 mb-3">
+                        <div class="p-2 bg-blue-200/20 rounded-lg">
+                          <.icon name="hero-academic-cap" class="size-6 text-blue-200/80" />
+                        </div>
+                        <h3 class="font-semibold text-base-content">Learn Mode</h3>
+                      </div>
+                      <p class="text-sm text-base-content/70 mb-4">
+                        Interactive learning with immediate feedback
+                      </p>
+                      <div :if={@terms_count > 0} class="card-actions">
+                        <.link
+                          navigate={
+                            ~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/learn"
+                          }
+                          class="btn btn-sm"
+                        >
+                          Start Learning
+                        </.link>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card bg-base-200 border-3 border-base-300/50 hover:border-fuchsia-200/30 transition-colors">
+                    <div class="card-body p-6">
+                      <div class="flex items-center gap-3 mb-3">
+                        <div class="p-2 bg-fuchsia-200/20 rounded-lg">
+                          <.icon name="hero-rectangle-stack" class="size-6 text-fuchsia-200/80" />
+                        </div>
+                        <h3 class="font-semibold text-base-content">Flashcards</h3>
+                      </div>
+                      <p class="text-sm text-base-content/70 mb-4">Classic flip-card study method</p>
+                      <div :if={@terms_count > 0} class="card-actions">
+                        <.link
+                          navigate={
+                            ~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/flashcards"
+                          }
+                          class="btn btn-sm"
+                        >
+                          Review Cards
+                        </.link>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card bg-base-200 border-3 border-base-300/50 hover:border-emerald-200/30 transition-colors">
+                    <div class="card-body p-6">
+                      <div class="flex items-center gap-3 mb-3">
+                        <div class="p-2 bg-emerald-200/20 rounded-lg">
+                          <.icon name="hero-pencil-square" class="size-6 text-emerald-200/80" />
+                        </div>
+                        <h3 class="font-semibold text-base-content">Test Mode</h3>
+                      </div>
+                      <p class="text-sm text-base-content/70 mb-4">
+                        Quiz yourself and track progress
+                      </p>
+                      <div :if={@terms_count > 0} class="card-actions">
+                        <.link
+                          navigate={
+                            ~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/test"
+                          }
+                          class="btn btn-sm"
+                        >
+                          Take Test
+                        </.link>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card bg-base-200 border-3 border-base-300/50 hover:border-amber-200/30 transition-colors">
+                    <div class="card-body p-6">
+                      <div class="flex items-center gap-3 mb-3">
+                        <div class="p-2 bg-amber-200/20 rounded-lg">
+                          <.icon name="hero-bolt" class="size-6 text-amber-200/80" />
+                        </div>
+                        <h3 class="font-semibold text-base-content">Duel Mode</h3>
+                      </div>
+                      <p class="text-sm text-base-content/70 mb-4">Challenge others in real-time</p>
+                      <div :if={@terms_count > 0} class="card-actions">
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          phx-click="create_duel"
+                        >
+                          Create Duel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="card bg-base-200">
                   <div class="card-body">
                     <h4 class="font-semibold">Add Single</h4>
@@ -489,18 +593,17 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                         <.button class="btn btn-primary">Add</.button>
                       </div>
                     </.form>
-                    <p class="text-xs opacity-70 mt-2">Next position: {@next_position}</p>
                   </div>
                 </div>
 
                 <div class="card bg-base-200">
                   <div class="card-body">
                     <h4 class="font-semibold">Bulk Add (CSV)</h4>
-                    <p class="text-xs opacity-70">One per line, format: term,definition</p>
-                    <.form for={@bulk_form} id="bulk-form" phx-submit="bulk_add">
-                      <.input field={@bulk_form[:csv]} type="textarea" class="min-h-32" />
+                    <h5 class="text-xs opacity-70">One per line, format: term,definition</h5>
+                    <.form for={@bulk_form} id="bulk-form" phx-submit="bulk_add" class="flex-grow">
+                      <.input field={@bulk_form[:csv]} type="textarea" />
                       <div class="flex justify-end">
-                        <.button class="btn btn-secondary">Add CSV</.button>
+                        <.button class="btn">Add CSV</.button>
                       </div>
                     </.form>
                   </div>
@@ -570,7 +673,12 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                           >
                             <td>
                               <div :if={@editing_id != t.id}>{t.term}</div>
-                              <.input :if={@editing_id == t.id} field={@edit_form[:term]} type="text" />
+                              <.input
+                                :if={@editing_id == t.id}
+                                field={@edit_form[:term]}
+                                type="textarea"
+                                form={"edit-row-#{t.id}-form"}
+                              />
                             </td>
 
                             <td>
@@ -579,6 +687,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                                 :if={@editing_id == t.id}
                                 field={@edit_form[:definition]}
                                 type="textarea"
+                                form={"edit-row-#{t.id}-form"}
                               />
                             </td>
 
@@ -601,13 +710,19 @@ defmodule FlashwarsWeb.StudySetLive.Show do
                               </div>
 
                               <div :if={@editing_id == t.id} class="flex gap-2 justify-end">
-                                <.form for={@edit_form} phx-submit="save_edit" phx-change="noop">
+                                <.form
+                                  for={@edit_form}
+                                  id={"edit-row-#{t.id}-form"}
+                                  phx-submit="save_edit"
+                                  phx-change="noop"
+                                >
                                   <input type="hidden" name="_row_id" value={t.id} />
                                   <.button class="btn btn-primary btn-sm min-w-[80px]">Save</.button>
                                   <button
                                     type="button"
                                     class="btn btn-ghost btn-sm min-w-[80px]"
                                     phx-click="cancel_edit"
+                                    phx-value-id={t.id}
                                   >
                                     Cancel
                                   </button>

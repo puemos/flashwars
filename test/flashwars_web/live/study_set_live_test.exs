@@ -88,7 +88,7 @@ defmodule FlashwarsWeb.StudySetLiveTest do
     {:ok, _lv, html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
 
     assert html =~ "Physics"
-    assert html =~ "private"
+    assert html =~ "Private"
     assert html =~ "terms"
   end
 
@@ -114,7 +114,6 @@ defmodule FlashwarsWeb.StudySetLiveTest do
 
     # click ✓ on the preview card; assert the view re-renders without crashing
     lv |> element("button[phx-value-grade=good]") |> render_click()
-    assert has_element?(lv, "div", "Preview")
   end
 
   test "privacy change is saved", %{conn: conn} do
@@ -222,5 +221,46 @@ defmodule FlashwarsWeb.StudySetLiveTest do
 
     # assert String.contains?(html, "Mastered") or String.contains?(html, "Practicing") or
     #          String.contains?(html, "Struggling")
+  end
+
+  test "inline edit updates a term", %{conn: conn} do
+    org = Ash.Seed.seed!(Organization, %{name: "Org-Manage-Edit"})
+    admin = Ash.Seed.seed!(User, %{email: "admin-edit@example.com"})
+
+    Org.add_member!(%{organization_id: org.id, user_id: admin.id, role: :admin},
+      authorize?: false
+    )
+
+    set =
+      Content.create_study_set!(
+        %{name: "Bio-Edit", organization_id: org.id, owner_id: admin.id, privacy: :private},
+        actor: admin
+      )
+
+    t =
+      Content.create_term!(
+        %{study_set_id: set.id, term: "DNA", definition: "Genetic", position: 1},
+        authorize?: false
+      )
+
+    conn = sign_in(conn, admin)
+    {:ok, lv, _} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
+
+    # Enter edit mode for the row
+    lv
+    |> element("button[phx-click='edit'][phx-value-id='#{t.id}']")
+    |> render_click()
+
+    # Ensure edit form is visible for the row
+    assert has_element?(lv, "#edit-row-#{t.id}-form")
+
+    # Submit the row form with updated values
+    lv
+    |> form("#edit-row-#{t.id}-form", edit: %{term: "DNA-Edited", definition: "Genetic Updated"})
+    |> render_submit()
+
+    # Verify the updated values appear in the table
+    assert has_element?(lv, "#terms td", "DNA-Edited")
+    assert has_element?(lv, "#terms td", "Genetic Updated")
   end
 end
