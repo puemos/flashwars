@@ -265,4 +265,30 @@
     .deck-flip.is-flipped {
         transform: rotateY(180deg);
     }
+
+    :root {
+        --swipe-duration: 400ms;
+        --swipe-duration-fast: 150ms;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        :root {
+            --swipe-duration: 50ms;
+            --swipe-duration-fast: 50ms;
+        }
+    }
+    .swipe-deck {
+        position: relative;
+        touch-action: pan-y;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    .swipe-card {
+        position: absolute;
+        inset: 0;
+        will-change: transform;
+        cursor: grab;
+    }
+    .swipe-card:active {
+        cursor: grabbing;
+    }
 }

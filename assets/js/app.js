@@ -7,12 +7,14 @@ import { MatchingDnD } from "./hooks/matching_dnd";
 import { GuestName } from "./hooks/guest_name";
 import { CopyToClipboard } from "./hooks/copy_to_clipboard";
 import { MatchingLines } from "./hooks/matching_lines";
+import { SwipeDeckHook } from "./hooks/swipe_deck_hook";
 
 const hooks = {
   MatchingDnD,
   MatchingLines,
   CopyToClipboard,
   GuestName,
+  SwipeDeck: SwipeDeckHook,
 };
 
 const csrfToken = document
