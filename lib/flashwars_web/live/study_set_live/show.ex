@@ -57,6 +57,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   # =============================
   # Study preview interactions
   # =============================
+  @impl true
   def handle_info(
         {:swipe_event, %{direction: direction, item: card, component_id: "preview-deck"}},
         socket

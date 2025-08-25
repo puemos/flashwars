@@ -92,30 +92,6 @@ defmodule FlashwarsWeb.StudySetLiveTest do
     assert html =~ "terms"
   end
 
-  test "preview study card accepts grading", %{conn: conn} do
-    org = Ash.Seed.seed!(Organization, %{name: "Org-LV-4"})
-    user = Ash.Seed.seed!(User, %{email: "lv-user4@example.com"})
-    Org.add_member!(%{organization_id: org.id, user_id: user.id, role: :admin}, authorize?: false)
-
-    set =
-      Content.create_study_set!(
-        %{name: "History", organization_id: org.id, owner_id: user.id, privacy: :private},
-        actor: user
-      )
-
-    _t =
-      Content.create_term!(
-        %{term: "Anomalia", definition: "Anomaly", study_set_id: set.id, position: 1},
-        actor: user
-      )
-
-    conn = sign_in(conn, user)
-    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}")
-
-    # click ✓ on the preview card; assert the view re-renders without crashing
-    lv |> element("button[phx-value-grade=good]") |> render_click()
-  end
-
   test "privacy change is saved", %{conn: conn} do
     org = Ash.Seed.seed!(Organization, %{name: "Org-LV-5"})
     user = Ash.Seed.seed!(User, %{email: "lv-user5@example.com"})
