@@ -32,14 +32,6 @@ export const SwipeDeckHook = {
     this.updateLayout();
   },
 
-  updated() {
-    // Handle updates from LiveView assigns
-    const newItems = JSON.parse(this.el.dataset.items || "[]");
-    if (newItems.length !== this.data.length) {
-      this.setData(newItems);
-    }
-  },
-
   destroyed() {
     if (this.keyboardHandler) {
       document.removeEventListener("keydown", this.keyboardHandler);
