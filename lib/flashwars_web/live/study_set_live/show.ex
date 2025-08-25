@@ -7,6 +7,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   alias Flashwars.Learning.Engine
   alias Flashwars.Games
   import Phoenix.Component
+  alias FlashwarsWeb.Components.SwipeDeckComponent
 
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_admin}
@@ -16,11 +17,8 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     with {:ok, set} <- Content.get_study_set_by_id(id, actor: socket.assigns.current_user),
          {:ok, terms} <- read_terms(set, socket.assigns.current_user) do
       # Compact study preview uses the same generator as Flashcards
-      preview_card =
-        Engine.generate_flashcard(socket.assigns.current_user, set.id,
-          order: :smart,
-          exclude_term_ids: []
-        )
+      cards =
+        generate_initial_cards(socket.assigns.current_user, set.id, 10)
 
       form = to_form(%{"term" => "", "definition" => ""}, as: :term)
       bulk_form = to_form(%{"csv" => ""}, as: :bulk)
@@ -45,7 +43,8 @@ defmodule FlashwarsWeb.StudySetLive.Show do
        |> assign(:mastery_map, mastery_map)
        |> assign(:mastery_counts, mastery_counts)
        |> assign(:next_position, length(terms) + 1)
-       |> assign(:preview_card, preview_card)
+       |> assign(:cards, cards)
+       |> assign(:cards_completed, 0)
        |> assign(:exclude_term_ids, MapSet.new())
        |> assign(:share_open, false)
        |> assign(:status_filter, :all)
@@ -58,35 +57,102 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   # =============================
   # Study preview interactions
   # =============================
-  @impl true
-  def handle_event("preview_grade", %{"grade" => grade}, socket) do
-    card = socket.assigns.preview_card
-
-    _ =
-      if card && card.term_id do
-        grade_atom = String.to_existing_atom(grade)
-
-        {:ok, _} =
-          Learning.review(socket.assigns.current_user, card.term_id, grade_atom,
-            queue_type: :review
-          )
+  def handle_info(
+        {:swipe_event, %{direction: direction, item: card, component_id: "preview-deck"}},
+        socket
+      ) do
+    # Map swipe directions to grades
+    grade =
+      case direction do
+        "left" -> :again
+        "down" -> :hard
+        "right" -> :good
+        "up" -> :easy
+        _ -> :good
       end
 
+    # Process the grade
+    _ =
+      if card.term_id do
+        {:ok, _} =
+          Learning.review(socket.assigns.current_user, card.term_id, grade, queue_type: :review)
+      end
+
+    # Update exclude list
     exclude =
-      if card && card.term_id,
-        do: MapSet.put(socket.assigns.exclude_term_ids, card.term_id),
-        else: socket.assigns.exclude_term_ids
+      if card.term_id do
+        MapSet.put(socket.assigns.exclude_term_ids, card.term_id)
+      else
+        socket.assigns.exclude_term_ids
+      end
 
-    set = socket.assigns.study_set
+    # Update cards completed counter
+    cards_completed = socket.assigns.cards_completed + 1
+
+    {:noreply,
+     socket
+     |> assign(:exclude_term_ids, exclude)
+     |> assign(:cards_completed, cards_completed)
+     |> put_flash(:info, "Graded as #{format_grade(grade)}")}
+  end
+
+  # Handle request for new card from the SwipeDeckComponent
+  def handle_info({:request_new_card, %{component_id: "preview-deck", count: count}}, socket) do
     actor = socket.assigns.current_user
+    set = socket.assigns.study_set
 
-    next =
-      Engine.generate_flashcard(actor, set.id,
-        order: :smart,
-        exclude_term_ids: MapSet.to_list(exclude)
-      )
+    base_exclude =
+      socket.assigns.exclude_term_ids
+      |> MapSet.to_list()
+      |> Kernel.++(socket.assigns.cards |> Enum.map(& &1.term_id) |> Enum.reject(&is_nil/1))
 
-    {:noreply, socket |> assign(:preview_card, next) |> assign(:exclude_term_ids, exclude)}
+    requested =
+      case count do
+        nil -> 1
+        c when is_integer(c) and c > 0 -> c
+        _ -> 1
+      end
+
+    # Generate a batch of new cards (may be fewer if exhausted)
+    new_cards = generate_initial_cards(actor, set.id, requested, exclude_term_ids: base_exclude)
+
+    cond do
+      new_cards == [] ->
+        {:noreply, put_flash(socket, :info, "No more cards available!")}
+
+      true ->
+        formatted = Enum.map(new_cards, &format_card_for_deck/1)
+
+        {:noreply,
+         socket
+         |> push_event("add_cards", %{cards: formatted})
+         |> assign(:cards, socket.assigns.cards ++ new_cards)}
+    end
+  end
+
+  def handle_info({:deck_empty, %{total_swiped: _total, component_id: "preview-deck"}}, socket) do
+    actor = socket.assigns.current_user
+    set = socket.assigns.study_set
+    # Try to load a fresh batch automatically
+    base_exclude =
+      socket.assigns.exclude_term_ids
+      |> MapSet.to_list()
+      |> Kernel.++(socket.assigns.cards |> Enum.map(& &1.term_id) |> Enum.reject(&is_nil/1))
+
+    new_cards = generate_initial_cards(actor, set.id, 10, exclude_term_ids: base_exclude)
+
+    cond do
+      new_cards == [] ->
+        {:noreply, put_flash(socket, :info, "Deck completed! Great job studying.")}
+
+      true ->
+        formatted = Enum.map(new_cards, &format_card_for_deck/1)
+
+        {:noreply,
+         socket
+         |> push_event("add_cards", %{cards: formatted})
+         |> assign(:cards, socket.assigns.cards ++ new_cards)}
+    end
   end
 
   # =============================
@@ -296,6 +362,54 @@ defmodule FlashwarsWeb.StudySetLive.Show do
   # =============================
   # Helpers
   # =============================
+  defp generate_initial_cards(actor, set_id, count, opts \\ []) do
+    generate_initial_cards_acc(actor, set_id, count, opts, [])
+  end
+
+  defp generate_initial_cards_acc(_actor, _set_id, 0, _opts, acc), do: Enum.reverse(acc)
+
+  defp generate_initial_cards_acc(actor, set_id, count, opts, acc) do
+    # Get existing exclude list and add previously generated card term_ids
+    base_exclude = Keyword.get(opts, :exclude_term_ids, [])
+    used_term_ids = Enum.map(acc, & &1.term_id) |> Enum.reject(&is_nil/1)
+    current_exclude = base_exclude ++ used_term_ids
+
+    card =
+      Engine.generate_flashcard(actor, set_id,
+        order: :smart,
+        exclude_term_ids: current_exclude
+      )
+
+    if card && card.term_id do
+      generate_initial_cards_acc(actor, set_id, count - 1, opts, [card | acc])
+    else
+      # No more unique cards available
+      Enum.reverse(acc)
+    end
+  end
+
+  defp format_cards_for_deck(cards) do
+    Enum.with_index(cards, fn card, index ->
+      format_card_for_deck(card, index)
+    end)
+  end
+
+  defp format_card_for_deck(card, index \\ 0) do
+    %{
+      id: card.term_id || "card-#{index}",
+      front: card.front,
+      back: card.back,
+      card_type: "flashcard",
+      term_id: card.term_id,
+      type: "flashcard"
+    }
+  end
+
+  defp format_grade(:again), do: "Again"
+  defp format_grade(:hard), do: "Hard"
+  defp format_grade(:good), do: "Good"
+  defp format_grade(:easy), do: "Easy"
+
   defp format_privacy(:public), do: "Public"
   defp format_privacy(:private), do: "Private"
   defp format_privacy(:link_only), do: "Private"
@@ -356,28 +470,6 @@ defmodule FlashwarsWeb.StudySetLive.Show do
         </span>
         <:actions>
           <div class="flex gap-2">
-            <!-- --- Share, Create Duel, Learn, Test, Flashcards buttons -->
-            <%!-- <.link
-              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/learn"}
-              class="btn"
-            >
-              Learn
-            </.link>
-            <.link
-              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/flashcards"}
-              class="btn"
-            >
-              Flashcards
-            </.link>
-            <.link
-              navigate={~p"/orgs/#{@current_scope.org_id}/study_sets/#{@study_set.id}/test"}
-              class="btn"
-            >
-              Test
-            </.link>
-            <.button phx-click="create_duel" variant="primary" class="btn">
-              Create Duel
-            </.button> --%>
             <.button phx-click="open_share" class="btn">Share</.button>
           </div>
         </:actions>
@@ -468,25 +560,21 @@ defmodule FlashwarsWeb.StudySetLive.Show do
               <!-- Add Terms Forms -->
               <div class="grid grid-cols-2 gap-6">
                 <!-- Compact study preview -->
-                <div class="card bg-base-200 col-span-full">
+                <div class="card bg-base-200/30 col-span-full">
                   <div class="card-body">
-                    <div :if={@preview_card} class="w-full">
-                      <div class="flex items-center justify-between">
-                        <div class="text-sm opacity-70">Term</div>
-                      </div>
-                      <h3 class="text-2xl font-semibold">{@preview_card.front}</h3>
-                      <div class="mt-4 grid grid-cols-2 gap-3">
-                        <button class="btn" phx-click="preview_grade" phx-value-grade="again">
-                          ✗
-                        </button>
-                        <button class="btn" phx-click="preview_grade" phx-value-grade="good">
-                          ✓
-                        </button>
-                      </div>
-                      <div class="mt-2 text-xs opacity-60">
-                        Want full experience? Use Learn / Flashcards above.
-                      </div>
-                    </div>
+                    <h4 class="card-title">Study Preview</h4>
+                    <p class="text-sm text-base-content/70 mb-4">
+                      Quickly review a few cards. For the full experience, try one of the study modes below.
+                    </p>
+                    <.live_component
+                      module={SwipeDeckComponent}
+                      id="preview-deck"
+                      items={format_cards_for_deck(@cards)}
+                      directions={["left", "right", "up", "down"]}
+                      stack_size={3}
+                      keyboard={true}
+                      haptics={true}
+                    />
                   </div>
                 </div>
 

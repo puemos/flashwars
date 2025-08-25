@@ -132,7 +132,7 @@ defmodule FlashwarsWeb.Components.SwipeDeckComponent do
         data-keyboard={to_string(@keyboard)}
         data-haptics={to_string(@haptics)}
         data-stack-size={to_string(@stack_size)}
-        class="relative w-full h-96 mb-4 max-w-md mx-auto"
+        class="relative w-full h-96 mb-10 max-w-md mx-auto"
       >
         <!-- Flashcard Template -->
         <template data-template="flashcard" class="group">
@@ -203,13 +203,6 @@ defmodule FlashwarsWeb.Components.SwipeDeckComponent do
       
     <!-- Action buttons (fallback for non-swipe users) -->
       <div class="flex justify-center gap-2">
-        <button
-          class="btn btn-sm btn-outline"
-          phx-click="show_answer"
-          phx-target={@myself}
-        >
-          Show Answer
-        </button>
         <button
           class="btn btn-sm"
           phx-click="programmatic_swipe"

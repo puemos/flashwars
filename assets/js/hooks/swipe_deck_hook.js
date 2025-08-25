@@ -493,7 +493,7 @@ export const SwipeDeckHook = {
     this.cards.forEach((card, index) => {
       const stackIndex = this.cards.length - 1 - index; // 0 is top card
       const scale = 1 - stackIndex * 0.03;
-      const translateY = stackIndex * 8;
+      const translateY = stackIndex * 16;
       const opacity = stackIndex > 2 ? 0 : 1;
 
       card.style.transition = "transform 0.2s ease-out";

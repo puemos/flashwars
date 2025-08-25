@@ -14,7 +14,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
 
     with {:ok, set} <- Content.get_study_set_by_id(set_id, actor: actor) do
       # Generate initial small batch of flashcards (just 3 to fill the stack)
-      cards = generate_initial_cards(actor, set.id, 3)
+      cards = generate_initial_cards(actor, set.id, 10)
 
       {:ok,
        socket
@@ -112,7 +112,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       |> MapSet.to_list()
       |> Kernel.++(socket.assigns.cards |> Enum.map(& &1.term_id) |> Enum.reject(&is_nil/1))
 
-    new_cards = generate_initial_cards(actor, set.id, 3, exclude_term_ids: base_exclude)
+    new_cards = generate_initial_cards(actor, set.id, 10, exclude_term_ids: base_exclude)
 
     cond do
       new_cards == [] ->
@@ -120,6 +120,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
 
       true ->
         formatted = Enum.map(new_cards, &format_card_for_deck/1)
+
         {:noreply,
          socket
          |> push_event("add_cards", %{cards: formatted})
