@@ -142,7 +142,49 @@ defmodule Flashwars.Learning.Scheduler do
     remaining = capacity_cards - length(take_due)
     add_unseen = if remaining > 0, do: Enum.take(unseen, remaining), else: []
 
-    take_due ++ add_unseen
+    queue = take_due ++ add_unseen
+
+    # If there is still room, fall back to struggling/practicing/mastered (in that order)
+    # based on Mastery classification. This ensures continued practice even when nothing is due
+    # and all terms have been seen.
+    leftover = capacity_cards - length(queue)
+
+    if leftover > 0 do
+      mastery = Flashwars.Learning.Mastery.classify(user, study_set_id)
+
+      # Build a set of already included term_ids (from due TermStates and unseen Terms)
+      included_ids =
+        (queue
+         |> Enum.map(fn
+           %{term_id: tid} -> tid
+           %{} = term -> Map.get(term, :id)
+         end)
+         |> Enum.reject(&is_nil/1))
+        |> MapSet.new()
+
+      take_from_category = fn list, acc, ids ->
+        needed = capacity_cards - length(acc)
+        if needed > 0 do
+          picked =
+            list
+            |> Enum.reject(fn m -> MapSet.member?(ids, m.term_id) end)
+            |> Enum.take(needed)
+
+          new_ids = MapSet.union(ids, MapSet.new(Enum.map(picked, & &1.term_id)))
+          {acc ++ picked, new_ids}
+        else
+          {acc, ids}
+        end
+      end
+
+      {queue1, included_ids} = take_from_category.(mastery.struggling, queue, included_ids)
+      {queue2, included_ids} = take_from_category.(mastery.practicing, queue1, included_ids)
+      {queue3, _} = take_from_category.(mastery.mastered, queue2, included_ids)
+
+      queue3
+    else
+      queue
+    end
   end
 
   defp unseen_cards(user, study_set_id) do

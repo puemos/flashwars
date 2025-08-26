@@ -37,6 +37,8 @@ defmodule FlashwarsWeb.Layouts do
   attr :current_user, :map, default: nil, doc: "the current signed-in user, if any"
   # Optional: allow callers to provide preloaded orgs for efficiency
   attr :orgs, :any, default: nil
+  # Optional: breadcrumbs items for wayfinding
+  attr :breadcrumbs, :list, default: []
 
   slot :inner_block, required: true
 
@@ -75,61 +77,32 @@ defmodule FlashwarsWeb.Layouts do
         </a>
       </div>
       <div class="flex-none">
-        <ul class="menu menu-horizontal px-1 items-center gap-1">
-          <li :if={@current_user && @orgs_count > 1}>
-            <details class="dropdown dropdown-end">
-              <summary class="btn btn-ghost">
-                <span class="mr-2">Org</span>
-                <.icon name="hero-chevron-down" class="w-4 h-4" />
-              </summary>
-              <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-56 p-2 shadow max-h-72 overflow-auto">
-                <li :for={org <- @orgs}>
-                  <.link navigate={~p"/orgs/#{org.id}"}>
-                    <span class={[
-                      "truncate",
-                      @current_scope && @current_scope[:org_id] == org.id && "font-semibold"
-                    ]}>
-                      {org.name}
-                    </span>
-                  </.link>
-                </li>
-              </ul>
-            </details>
-          </li>
-          <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
-            <.link navigate={~p"/orgs/#{@current_scope[:org_id]}"} class="btn btn-ghost">Play</.link>
-          </li>
-          <li :if={@current_user && @current_scope && @current_scope[:org_id]}>
-            <.link
-              navigate={~p"/orgs/#{@current_scope[:org_id]}/study_sets/new"}
-              class="btn btn-ghost"
-            >
-              Build Set
-            </.link>
-          </li>
-          <%!-- <li>
-            <.theme_toggle />
-          </li> --%>
-          <li :if={@current_user}>
+        <div class="flex items-center gap-2">
+          <FlashwarsWeb.NavigationComponents.main_nav
+            current_user={@current_user}
+            current_scope={@current_scope}
+            orgs_count={@orgs_count}
+            orgs={@orgs}
+          />
+
+          <%!-- Account / auth --%>
+          <div :if={@current_user}>
             <details class="dropdown dropdown-end">
               <summary class="btn">Account</summary>
               <ul class="dropdown-content menu bg-base-200 rounded-box z-[1] w-52 p-2 shadow">
                 <li><a href={~p"/sign-out"}>Sign out</a></li>
               </ul>
             </details>
-          </li>
-          <li :if={!@current_user}>
-            <a href={~p"/sign-in"} class="btn">Sign in</a>
-          </li>
-          <li :if={!@current_user}>
-            <a href={~p"/register"} class="btn btn-primary">Play Now</a>
-          </li>
-        </ul>
+          </div>
+          <a :if={!@current_user} href={~p"/sign-in"} class="btn">Sign in</a>
+          <a :if={!@current_user} href={~p"/register"} class="btn btn-primary">Play Now</a>
+        </div>
       </div>
     </header>
 
     <main class="px-4 py-10 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-5xl space-y-4">
+        <FlashwarsWeb.NavigationComponents.breadcrumbs items={@breadcrumbs} />
         {render_slot(@inner_block)}
       </div>
     </main>

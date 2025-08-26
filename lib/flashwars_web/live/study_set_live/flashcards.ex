@@ -179,6 +179,15 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
     {:noreply, assign(socket, :swipe_mode, !current_mode)}
   end
 
+  # Start the next round after showing recap
+  def handle_event("start_next_round", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_recap?, false)
+     |> assign(:round_recap, [])
+     |> assign(:round_terms, [])}
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
@@ -191,6 +200,37 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
           <.button phx-click="create_duel" variant="primary">Create Duel</.button>
         </:actions>
       </.header>
+      
+    <!-- Study Progress -->
+      <div class="w-full flex justify-center">
+        <div class="bg-base-200/50 stats shadow mb-6 mx-auto">
+          <div class="stat">
+            <div class="stat-title">Cards Studied</div>
+            <div
+              id={"cards-completed-#{@cards_completed}"}
+              class="stat-value animate-roll-up animation-delay-150 opacity-0"
+            >
+              {@cards_completed}
+            </div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Study Set</div>
+            <div class="stat-value text-sm">{@study_set.name}</div>
+          </div>
+        </div>
+      </div>
+      
+    <!-- SwipeDeck Component -->
+      <.live_component
+        :if={!@show_recap?}
+        module={SwipeDeckComponent}
+        id="flashcard-deck"
+        items={format_cards_for_deck(@cards)}
+        directions={["left", "right", "up", "down"]}
+        stack_size={3}
+        keyboard={true}
+        haptics={true}
+      />
       
     <!-- Round recap -->
       <div :if={@show_recap?} class="mb-6">
@@ -215,34 +255,6 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
           </div>
         </div>
       </div>
-      
-    <!-- Study Progress -->
-      <div class="stats shadow mb-6">
-        <div class="stat">
-          <div class="stat-title">Cards Studied</div>
-          <div class="stat-value text-primary">{@cards_completed}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Remaining</div>
-          <div class="stat-value">{length(@cards)}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-title">Study Set</div>
-          <div class="stat-value text-sm">{@study_set.name}</div>
-        </div>
-      </div>
-      
-    <!-- SwipeDeck Component -->
-      <.live_component
-        :if={!@show_recap?}
-        module={SwipeDeckComponent}
-        id="flashcard-deck"
-        items={format_cards_for_deck(@cards)}
-        directions={["left", "right", "up", "down"]}
-        stack_size={3}
-        keyboard={true}
-        haptics={true}
-      />
     </Layouts.app>
     """
   end
