@@ -8,6 +8,9 @@ import { GuestName } from "./hooks/guest_name";
 import { CopyToClipboard } from "./hooks/copy_to_clipboard";
 import { MatchingLines } from "./hooks/matching_lines";
 import { SwipeDeckHook } from "./hooks/swipe_deck_hook";
+import { CountTo } from "./hooks/count_to";
+import { PopIn } from "./hooks/pop_in";
+import { OverlayDismiss } from "./hooks/overlay_dismiss";
 
 const hooks = {
   MatchingDnD,
@@ -15,6 +18,9 @@ const hooks = {
   CopyToClipboard,
   GuestName,
   SwipeDeck: SwipeDeckHook,
+  CountTo,
+  PopIn,
+  OverlayDismiss,
 };
 
 const csrfToken = document

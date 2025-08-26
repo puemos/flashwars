@@ -136,7 +136,14 @@ defmodule FlashwarsWeb.Components.SwipeDeckComponent do
       >
         <!-- Flashcard Template -->
         <template data-template="flashcard" class="group">
-          <div class="absolute inset-0 card bg-base-200 shadow-xl">
+          <div class={[
+            "absolute inset-0 card bg-base-200 shadow-xl swipe-card",
+            "transition-all duration-150",
+            "group-[.swipe-deck-left]:glow-red-200",
+            "group-[.swipe-deck-right]:glow-green-300",
+            "group-[.swipe-deck-down]:glow-orange-300",
+            "group-[.swipe-deck-up]:glow-blue-300"
+          ]}>
             <!-- Swipe direction indicators -->
             <div class="swipe-indicators z-index-10">
               <div class="swipe-indicator group-[.swipe-deck-left]:opacity-100 absolute left-4 top-1/2 -translate-y-1/2 opacity-0 transition-opacity">

@@ -408,12 +408,16 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
         user = socket.assigns.current_user
         set_id = get_study_set_id(socket.assigns)
         recap = build_round_recap(user, set_id, state)
+        # Gamified rewards: compute and persist XP/level/streak per org
+        org_id = socket.assigns[:current_scope] && socket.assigns.current_scope.org_id
+        rewards = Flashwars.Learning.Gamify.grant_round_rewards(user, org_id, recap)
 
         socket
         |> assign(:session_state, state)
         |> assign(:show_recap?, true)
         |> assign(:round_recap, recap)
         |> assign(:just_completed_round, state.round_number)
+        |> assign(:recap_rewards, rewards)
     end
   end
 
@@ -458,6 +462,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     |> assign_new(:show_recap?, fn -> false end)
     |> assign_new(:round_recap, fn -> [] end)
     |> assign_new(:just_completed_round, fn -> nil end)
+    |> assign_new(:recap_rewards, fn -> nil end)
   end
 
   # ========================================
@@ -643,6 +648,10 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           items={@round_recap}
           continue_event="start_next_round"
           continue_label="Next Round"
+          xp_earned={@recap_rewards && @recap_rewards.xp_earned}
+          level={@recap_rewards && @recap_rewards.level}
+          level_progress={@recap_rewards && @recap_rewards.level_progress}
+          streak={@recap_rewards && @recap_rewards.streak}
         />
         
     <!-- Main learning interface -->

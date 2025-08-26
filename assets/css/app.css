@@ -28,9 +28,9 @@
     prefersdark: true;
     color-scheme: "dark";
     /* Slightly deeper base to make neons pop */
-    --color-base-100: #28125b; /* was #301a6b */
-    --color-base-200: #3d247a; /* was #3d247a */
-    --color-base-300: #4a2e89; /* was #4a2e89 */
+    --color-base-100: #28125b;
+    --color-base-200: #3d247a;
+    --color-base-300: #4a2e89;
     --color-base-content: #ffffff;
 
     /* Brand core unchanged, but you can bump saturation if desired */
@@ -148,6 +148,12 @@
 
 /* This file is for your main application CSS */
 
+@utility glow-* {
+    box-shadow:
+        0 0 12px --value(--color-*),
+        0 0 20px --value(--color-*);
+}
+
 @layer utilities {
     @keyframes roll-up {
         from {
@@ -164,6 +170,32 @@
         animation-duration: 0.26s;
         animation-timing-function: ease-out;
         animation-fill-mode: forwards;
+    }
+
+    @keyframes clock-flip {
+        0% {
+            transform: rotateX(90deg);
+            opacity: 0.6;
+        }
+        60% {
+            transform: rotateX(-20deg);
+            opacity: 1;
+        }
+        80% {
+            transform: rotateX(10deg);
+        }
+        100% {
+            transform: rotateX(0deg);
+            opacity: 1;
+        }
+    }
+    .animate-clock-flip {
+        animation-name: clock-flip;
+        animation-duration: 0.7s;
+        animation-timing-function: cubic-bezier(0.4, 0.2, 0.2, 1.1);
+        animation-fill-mode: forwards;
+        backface-visibility: hidden;
+        perspective: 400px;
     }
 
     /* Animated background + effects */

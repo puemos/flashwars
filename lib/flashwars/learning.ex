@@ -26,6 +26,12 @@ defmodule Flashwars.Learning do
       define :list_term_states, action: :read
       define :list_term_states_for_user_set, action: :for_user_set
     end
+
+    resource Flashwars.Learning.UserStats do
+      define :upsert_user_stats, action: :upsert
+      define :list_user_stats, action: :read
+      define :list_user_stats_for_user_org, action: :for_user_org
+    end
   end
 
   @doc "Convenience wrapper to classify mastery per study set for a user."
@@ -129,4 +135,8 @@ defmodule Flashwars.Learning do
       {:ok, %{card_state: update, item: item}}
     end
   end
+end
+
+defimpl String.Chars, for: Flashwars.Learning.UserStats do
+  def to_string(_), do: "UserStats"
 end

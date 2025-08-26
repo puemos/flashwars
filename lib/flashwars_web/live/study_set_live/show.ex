@@ -93,8 +93,7 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     {:noreply,
      socket
      |> assign(:exclude_term_ids, exclude)
-     |> assign(:cards_completed, cards_completed)
-     |> put_flash(:info, "Graded as #{format_grade(grade)}")}
+     |> assign(:cards_completed, cards_completed)}
   end
 
   # Handle request for new card from the SwipeDeckComponent

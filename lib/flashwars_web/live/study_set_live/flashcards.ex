@@ -30,7 +30,8 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
        |> assign(:round_number, 1)
        |> assign(:round_terms, [])
        |> assign(:show_recap?, false)
-       |> assign(:round_recap, [])}
+       |> assign(:round_recap, [])
+       |> assign(:recap_rewards, nil)}
     else
       _ -> {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
     end
@@ -77,15 +78,24 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       end
 
     # End-of-round recap check
-    {show_recap, round_recap, next_round_terms, next_round_number} =
+    {show_recap, round_recap, next_round_terms, next_round_number, rewards} =
       if rem(cards_completed, @round_size) == 0 and round_terms != [] do
         recap =
           build_round_recap(socket.assigns.current_user, socket.assigns.study_set.id, round_terms)
 
-        {true, recap, [], socket.assigns.round_number + 1}
+        org_id = socket.assigns[:current_scope] && socket.assigns.current_scope.org_id
+
+        rewards =
+          Flashwars.Learning.Gamify.grant_round_rewards(
+            socket.assigns.current_user,
+            org_id,
+            recap
+          )
+
+        {true, recap, [], socket.assigns.round_number + 1, rewards}
       else
         {socket.assigns[:show_recap?] || false, socket.assigns[:round_recap] || [], round_terms,
-         socket.assigns.round_number}
+         socket.assigns.round_number, socket.assigns[:recap_rewards]}
       end
 
     {:noreply,
@@ -96,7 +106,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
      |> assign(:round_number, next_round_number)
      |> assign(:show_recap?, show_recap)
      |> assign(:round_recap, round_recap)
-     |> put_flash(:info, "Graded as #{format_grade(grade)}")}
+     |> assign(:recap_rewards, rewards)}
   end
 
   # Handle request for new card from the SwipeDeckComponent
@@ -203,12 +213,12 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       
     <!-- Study Progress -->
       <div class="w-full flex justify-center">
-        <div class="bg-base-200/50 stats shadow mb-6 mx-auto">
+        <div class="bg-base-200/50 stats shadow mb-6 mx-auto text-center">
           <div class="stat">
             <div class="stat-title">Cards Studied</div>
             <div
               id={"cards-completed-#{@cards_completed}"}
-              class="stat-value animate-roll-up animation-delay-150 opacity-0"
+              class="stat-value"
             >
               {@cards_completed}
             </div>
@@ -240,6 +250,10 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
         items={@round_recap}
         continue_event="start_next_round"
         continue_label="Next Round"
+        xp_earned={@recap_rewards && @recap_rewards.xp_earned}
+        level={@recap_rewards && @recap_rewards.level}
+        level_progress={@recap_rewards && @recap_rewards.level_progress}
+        streak={@recap_rewards && @recap_rewards.streak}
       />
     </Layouts.app>
     """
