@@ -232,29 +232,15 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
         haptics={true}
       />
       
-    <!-- Round recap -->
-      <div :if={@show_recap?} class="mb-6">
-        <div class="card bg-base-200">
-          <div class="card-body">
-            <div class="text-sm opacity-70">Round {@round_number - 1} recap</div>
-            <h3 class="mt-2 text-2xl font-semibold">Nice! Review this round's terms:</h3>
-            <ul class="divide-y divide-base-300 mt-4">
-              <li
-                :for={rec <- @round_recap}
-                id={"f-recap-#{rec.term_id}"}
-                class="py-3 flex items-center justify-between"
-              >
-                <div class="font-medium">{rec.term}</div>
-                <span class="badge badge-outline">{rec.mastery}</span>
-              </li>
-            </ul>
-            <div :if={@round_recap == []} class="opacity-70">No terms to recap.</div>
-            <div class="mt-4">
-              <.button id="fc-next-round-btn" phx-click="start_next_round">Next Round</.button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <!-- Round recap overlay -->
+      <FlashwarsWeb.Components.RecapOverlay.recap_overlay
+        id="flashcards-recap-overlay"
+        show={@show_recap?}
+        title={"Round #{@round_number - 1} recap"}
+        items={@round_recap}
+        continue_event="start_next_round"
+        continue_label="Next Round"
+      />
     </Layouts.app>
     """
   end

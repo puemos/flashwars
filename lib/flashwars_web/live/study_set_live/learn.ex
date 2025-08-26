@@ -635,33 +635,15 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           <div class="loading loading-spinner loading-lg"></div>
         </div>
         
-    <!-- Round recap -->
-        <div :if={@session_state && @show_recap?} class="space-y-6">
-          <div class="card bg-base-200 shadow-xl">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div class="text-sm opacity-70">Round {@just_completed_round} recap</div>
-              </div>
-              <h3 class="mt-2 text-2xl font-semibold">Great work! Here's what you covered:</h3>
-              <div class="mt-4">
-                <ul class="divide-y divide-base-300">
-                  <li
-                    :for={rec <- @round_recap}
-                    id={"recap-#{rec.term_id}"}
-                    class="py-3 flex items-center justify-between"
-                  >
-                    <div class="font-medium">{rec.term}</div>
-                    <span class="badge badge-outline">{rec.mastery}</span>
-                  </li>
-                </ul>
-                <div :if={@round_recap == []} class="opacity-70">No terms to recap.</div>
-              </div>
-              <div class="mt-4">
-                <.button id="next-round-btn" phx-click="start_next_round">Next Round</.button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <!-- Round recap overlay -->
+        <FlashwarsWeb.Components.RecapOverlay.recap_overlay
+          id="learn-recap-overlay"
+          show={@session_state && @show_recap?}
+          title={"Round #{@just_completed_round} recap"}
+          items={@round_recap}
+          continue_event="start_next_round"
+          continue_label="Next Round"
+        />
         
     <!-- Main learning interface -->
         <div
