@@ -154,16 +154,17 @@ defmodule Flashwars.Learning.Scheduler do
 
       # Build a set of already included term_ids (from due TermStates and unseen Terms)
       included_ids =
-        (queue
-         |> Enum.map(fn
-           %{term_id: tid} -> tid
-           %{} = term -> Map.get(term, :id)
-         end)
-         |> Enum.reject(&is_nil/1))
+        queue
+        |> Enum.map(fn
+          %{term_id: tid} -> tid
+          %{} = term -> Map.get(term, :id)
+        end)
+        |> Enum.reject(&is_nil/1)
         |> MapSet.new()
 
       take_from_category = fn list, acc, ids ->
         needed = capacity_cards - length(acc)
+
         if needed > 0 do
           picked =
             list

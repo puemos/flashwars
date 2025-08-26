@@ -75,4 +75,3 @@ defmodule Flashwars.Learning.UserStats do
     identity :by_user_org, [:user_id, :organization_id]
   end
 end
-

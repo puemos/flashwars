@@ -115,6 +115,9 @@ defmodule FlashwarsWeb.Router do
     # Game rooms (public/link/private via policies); optional auth via LiveView on_mount
     live "/games/r/:id", GameRoomLive.Duel, :show
     live "/games/t/:token", GameRoomLive.Duel, :token
+
+    # Study set sharing (link-only) — anonymous access via token
+    live "/s/t/:token", StudySetLive.Token, :token
   end
 
   # Other scopes may use custom stacks.

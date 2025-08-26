@@ -31,12 +31,13 @@ defmodule FlashwarsWeb.NavigationComponents do
   attr :orgs, :any, default: []
 
   def main_nav(assigns) do
-    assigns = assign_new(assigns, :orgs_count, fn ->
-      case assigns[:orgs] do
-        list when is_list(list) -> length(list)
-        _ -> assigns[:orgs_count] || 0
-      end
-    end)
+    assigns =
+      assign_new(assigns, :orgs_count, fn ->
+        case assigns[:orgs] do
+          list when is_list(list) -> length(list)
+          _ -> assigns[:orgs_count] || 0
+        end
+      end)
 
     ~H"""
     <nav class="hidden md:flex items-center gap-1">
@@ -78,7 +79,8 @@ defmodule FlashwarsWeb.NavigationComponents do
 
       <div :if={@current_user && @orgs_count > 1} class="divider divider-horizontal" />
 
-      <.org_switcher :if={@current_user && @orgs_count > 1}
+      <.org_switcher
+        :if={@current_user && @orgs_count > 1}
         orgs={@orgs}
         current_scope={@current_scope}
       />
@@ -120,6 +122,7 @@ defmodule FlashwarsWeb.NavigationComponents do
   # list with organizations; this is a compact version for reuse where needed.
   attr :orgs, :any, default: []
   attr :current_scope, :map, default: nil
+
   def org_switcher(assigns) do
     ~H"""
     <details class="dropdown dropdown-end">

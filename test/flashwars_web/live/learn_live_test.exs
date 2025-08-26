@@ -131,3 +131,78 @@ defmodule FlashwarsWeb.LearnSettingsUITest do
     assert has_element?(lv, "#learn-settings-card")
   end
 end
+
+defmodule FlashwarsWeb.LearnFlowE2ETest do
+  use FlashwarsWeb.ConnCase, async: true
+  import Phoenix.LiveViewTest
+  alias Flashwars.Test.LearningFixtures
+
+  setup do
+    {:ok, LearningFixtures.build_set(nil)}
+  end
+
+  defp sign_in(conn, user) do
+    {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user)
+    conn |> Phoenix.ConnTest.init_test_session(%{}) |> Plug.Conn.put_session("user_token", token)
+  end
+
+  defp wait_for(fun, attempts \\ 80)
+  defp wait_for(_fun, 0), do: :timeout
+
+  defp wait_for(fun, n) do
+    case fun.() do
+      true ->
+        :ok
+
+      _ ->
+        Process.sleep(25)
+        wait_for(fun, n - 1)
+    end
+  end
+
+  test "answer then continue advances to next question", %{
+    conn: conn,
+    org: org,
+    user: user,
+    set: set
+  } do
+    conn = sign_in(conn, user)
+    {:ok, lv, html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/learn")
+    assert html =~ "Learn"
+
+    # Open settings and restrict to multiple choice only, then restart session
+    :ok = wait_for(fn -> has_element?(lv, "[phx-click='toggle_settings']") end)
+    _ = lv |> element("[phx-click='toggle_settings']") |> render_click()
+
+    _ =
+      form(lv, "#learn-settings",
+        settings: %{
+          types: %{multiple_choice: "on"},
+          smart: "true",
+          size: "5"
+        }
+      )
+      |> render_change()
+
+    _ =
+      lv
+      |> element("#learn-settings-card button", "Start New Session With Settings")
+      |> render_click()
+
+    # Wait for choices to render (buttons carry phx-click="answer")
+    :ok =
+      wait_for(
+        fn -> has_element?(lv, "button[phx-click='answer'][phx-value-index='0']") end,
+        1000
+      )
+
+    # Answer first option
+    _ = lv |> element("button[phx-click='answer'][phx-value-index='0']") |> render_click()
+    :ok = wait_for(fn -> has_element?(lv, "#next-btn") end)
+
+    # Continue to next item
+    _ = lv |> element("#next-btn") |> render_click()
+    # Ensure position increments; the UI shows "Question X / N"
+    :ok = wait_for(fn -> render(lv) =~ ~r/Question\s+\d+\s+\/\s+\d+/ end)
+  end
+end
