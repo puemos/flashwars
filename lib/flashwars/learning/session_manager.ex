@@ -107,10 +107,10 @@ defmodule Flashwars.Learning.SessionManager do
       clean_state =
         %{
           state
-          | phase: :first_pass
+          | phase: :first_pass,
+            retry_queue: [],
+            retry_index: 0
         }
-        |> Map.delete(:retry_queue)
-        |> Map.delete(:retry_index)
 
       {:start_new_round, clean_state}
     end
