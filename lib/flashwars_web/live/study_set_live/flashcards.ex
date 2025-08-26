@@ -9,11 +9,14 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
   on_mount {FlashwarsWeb.LiveUserAuth, :live_user_required}
   on_mount {FlashwarsWeb.OnMount.CurrentOrg, :require_member}
 
+  # Round size for end-of-round recap
+  @round_size 10
+
   def mount(%{"id" => set_id}, _session, socket) do
     actor = socket.assigns.current_user
 
     with {:ok, set} <- Content.get_study_set_by_id(set_id, actor: actor) do
-      # Generate initial small batch of flashcards (just 3 to fill the stack)
+      # Generate initial small batch of flashcards
       cards = generate_initial_cards(actor, set.id, 10)
 
       {:ok,
@@ -23,7 +26,11 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
        |> assign(:study_set, set)
        |> assign(:exclude_term_ids, MapSet.new())
        |> assign(:cards, cards)
-       |> assign(:cards_completed, 0)}
+       |> assign(:cards_completed, 0)
+       |> assign(:round_number, 1)
+       |> assign(:round_terms, [])
+       |> assign(:show_recap?, false)
+       |> assign(:round_recap, [])}
     else
       _ -> {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
     end
@@ -62,10 +69,33 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
     # Update cards completed counter
     cards_completed = socket.assigns.cards_completed + 1
 
+    # Track terms in the current round
+    round_terms =
+      case card.term_id do
+        nil -> socket.assigns.round_terms
+        tid -> [tid | socket.assigns.round_terms]
+      end
+
+    # End-of-round recap check
+    {show_recap, round_recap, next_round_terms, next_round_number} =
+      if rem(cards_completed, @round_size) == 0 and round_terms != [] do
+        recap =
+          build_round_recap(socket.assigns.current_user, socket.assigns.study_set.id, round_terms)
+
+        {true, recap, [], socket.assigns.round_number + 1}
+      else
+        {socket.assigns[:show_recap?] || false, socket.assigns[:round_recap] || [], round_terms,
+         socket.assigns.round_number}
+      end
+
     {:noreply,
      socket
      |> assign(:exclude_term_ids, exclude)
      |> assign(:cards_completed, cards_completed)
+     |> assign(:round_terms, next_round_terms)
+     |> assign(:round_number, next_round_number)
+     |> assign(:show_recap?, show_recap)
+     |> assign(:round_recap, round_recap)
      |> put_flash(:info, "Graded as #{format_grade(grade)}")}
   end
 
@@ -162,6 +192,30 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
         </:actions>
       </.header>
       
+    <!-- Round recap -->
+      <div :if={@show_recap?} class="mb-6">
+        <div class="card bg-base-200">
+          <div class="card-body">
+            <div class="text-sm opacity-70">Round {@round_number - 1} recap</div>
+            <h3 class="mt-2 text-2xl font-semibold">Nice! Review this round's terms:</h3>
+            <ul class="divide-y divide-base-300 mt-4">
+              <li
+                :for={rec <- @round_recap}
+                id={"f-recap-#{rec.term_id}"}
+                class="py-3 flex items-center justify-between"
+              >
+                <div class="font-medium">{rec.term}</div>
+                <span class="badge badge-outline">{rec.mastery}</span>
+              </li>
+            </ul>
+            <div :if={@round_recap == []} class="opacity-70">No terms to recap.</div>
+            <div class="mt-4">
+              <.button id="fc-next-round-btn" phx-click="start_next_round">Next Round</.button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
     <!-- Study Progress -->
       <div class="stats shadow mb-6">
         <div class="stat">
@@ -180,6 +234,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       
     <!-- SwipeDeck Component -->
       <.live_component
+        :if={!@show_recap?}
         module={SwipeDeckComponent}
         id="flashcard-deck"
         items={format_cards_for_deck(@cards)}
@@ -241,4 +296,25 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
   defp format_grade(:hard), do: "Hard"
   defp format_grade(:good), do: "Good"
   defp format_grade(:easy), do: "Easy"
+
+  # Build recap list from round term_ids
+  defp build_round_recap(user, study_set_id, round_terms) do
+    term_ids = Enum.uniq(Enum.reject(round_terms, &is_nil/1))
+    mastery = Learning.mastery_for_set(user, study_set_id)
+
+    by_id =
+      mastery.mastered
+      |> Enum.map(&{&1.term_id, {&1.term, "Mastered"}})
+      |> Kernel.++(Enum.map(mastery.practicing, &{&1.term_id, {&1.term, "Practicing"}}))
+      |> Kernel.++(Enum.map(mastery.struggling, &{&1.term_id, {&1.term, "Struggling"}}))
+      |> Kernel.++(Enum.map(mastery.unseen, &{&1.term_id, {&1.term, "Unseen"}}))
+      |> Map.new()
+
+    Enum.map(term_ids, fn id ->
+      case Map.get(by_id, id) do
+        {term, label} -> %{term_id: id, term: term, mastery: label}
+        nil -> %{term_id: id, term: id, mastery: "—"}
+      end
+    end)
+  end
 end

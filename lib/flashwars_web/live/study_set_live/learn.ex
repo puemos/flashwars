@@ -179,6 +179,28 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
   end
 
   @impl true
+  def handle_event("start_next_round", _params, socket) do
+    user = socket.assigns.current_user
+    set_id = get_study_set_id(socket.assigns)
+
+    case SessionManager.start_new_round(socket.assigns.session_state, user, set_id) do
+      {:ok, new_state} ->
+        {:noreply,
+         socket
+         |> assign(:session_state, new_state)
+         |> assign(:show_recap?, false)
+         |> assign(:round_recap, [])
+         |> assign(:just_completed_round, nil)
+         |> sync_ui_with_session_state(new_state)
+         |> assign_ui_state()
+         |> put_flash(:info, "New round started!")}
+
+      {:error, :no_items} ->
+        {:noreply, put_flash(socket, :error, "Unable to generate new round items")}
+    end
+  end
+
+  @impl true
   def handle_event("dont_know", _params, socket) do
     session_state = SessionManager.defer_current_item(socket.assigns.session_state)
 
@@ -352,20 +374,16 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
         |> assign_ui_state()
 
       {:start_new_round, state} ->
+        # end-of-round: show recap for the just-completed round
         user = socket.assigns.current_user
         set_id = get_study_set_id(socket.assigns)
+        recap = build_round_recap(user, set_id, state)
 
-        case SessionManager.start_new_round(state, user, set_id) do
-          {:ok, new_state} ->
-            socket
-            |> assign(:session_state, new_state)
-            |> sync_ui_with_session_state(new_state)
-            |> assign_ui_state()
-            |> put_flash(:info, "New round started!")
-
-          {:error, :no_items} ->
-            put_flash(socket, :error, "Unable to generate new round items")
-        end
+        socket
+        |> assign(:session_state, state)
+        |> assign(:show_recap?, true)
+        |> assign(:round_recap, recap)
+        |> assign(:just_completed_round, state.round_number)
     end
   end
 
@@ -407,6 +425,9 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     |> assign(:selected_left, nil)
     |> assign(:selected_right, nil)
     |> assign(:last_wrong_index, nil)
+    |> assign_new(:show_recap?, fn -> false end)
+    |> assign_new(:round_recap, fn -> [] end)
+    |> assign_new(:just_completed_round, fn -> nil end)
   end
 
   # ========================================
@@ -550,9 +571,37 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           <div class="loading loading-spinner loading-lg"></div>
         </div>
         
+    <!-- Round recap -->
+        <div :if={@session_state && @show_recap?} class="space-y-6">
+          <div class="card bg-base-200">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div class="text-sm opacity-70">Round {@just_completed_round} recap</div>
+              </div>
+              <h3 class="mt-2 text-2xl font-semibold">Great work! Here's what you covered:</h3>
+              <div class="mt-4">
+                <ul class="divide-y divide-base-300">
+                  <li
+                    :for={rec <- @round_recap}
+                    id={"recap-#{rec.term_id}"}
+                    class="py-3 flex items-center justify-between"
+                  >
+                    <div class="font-medium">{rec.term}</div>
+                    <span class="badge badge-outline">{rec.mastery}</span>
+                  </li>
+                </ul>
+                <div :if={@round_recap == []} class="opacity-70">No terms to recap.</div>
+              </div>
+              <div class="mt-4">
+                <.button id="next-round-btn" phx-click="start_next_round">Next Round</.button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
     <!-- Main learning interface -->
         <div
-          :if={@session_state}
+          :if={@session_state && !@show_recap?}
           id="learn-panel"
           class="space-y-6"
           phx-window-keydown={if @answered?, do: "any_key"}
@@ -699,5 +748,56 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
       </.async_result>
     </Layouts.app>
     """
+  end
+
+  # ========================================
+  # Private Functions - Round Recap
+  # ========================================
+
+  defp build_round_recap(user, study_set_id, %SessionState{} = state) do
+    term_ids = extract_term_ids_from_round(state.round_items || [])
+
+    # Classify mastery across the set, then filter for the round's terms
+    mastery = Learning.mastery_for_set(user, study_set_id)
+
+    by_id =
+      mastery.mastered
+      |> Enum.map(&{&1.term_id, {&1.term, "Mastered"}})
+      |> Kernel.++(Enum.map(mastery.practicing, &{&1.term_id, {&1.term, "Practicing"}}))
+      |> Kernel.++(Enum.map(mastery.struggling, &{&1.term_id, {&1.term, "Struggling"}}))
+      |> Kernel.++(Enum.map(mastery.unseen, &{&1.term_id, {&1.term, "Unseen"}}))
+      |> Map.new()
+
+    term_ids
+    |> Enum.uniq()
+    |> Enum.map(fn id ->
+      case Map.get(by_id, id) do
+        {term, label} -> %{term_id: id, term: term, mastery: label}
+        nil -> %{term_id: id, term: id, mastery: "—"}
+      end
+    end)
+  end
+
+  defp extract_term_ids_from_round(items) when is_list(items) do
+    items
+    |> Enum.flat_map(fn item ->
+      cond do
+        is_map(item) and Map.has_key?(item, :term_id) ->
+          [item.term_id]
+
+        is_map(item) and is_binary(Map.get(item, "term_id")) ->
+          [Map.get(item, "term_id")]
+
+        is_map(item) and is_list(Map.get(item, :left)) ->
+          Enum.map(Map.get(item, :left), fn t -> t[:term_id] || t["term_id"] end)
+
+        is_map(item) and is_list(Map.get(item, "left")) ->
+          Enum.map(Map.get(item, "left"), fn t -> t["term_id"] || t[:term_id] end)
+
+        true ->
+          []
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 end

@@ -1,25 +1,153 @@
-This is a web application written using the Phoenix web framework.
+# AGENTS.md
 
-Important: use `mix test --trace '>' test_nav.log '2>&1' '||' true '&&' sed -n '1,160p' test_nav.log '&&' rm -f test_nav.log` for testong so you can see the output
+This document provides instructions for AI agents to effectively interact with the `flashwars` codebase.
 
-Critical: Analyze my request very carefull, think about an approach, write your approach. Make a details action plan. Develop. Write tests, if needed e2e tests that cover the features. Validate it works by running the test
+## Project Overview
 
-## Project guidelines
+`flashwars` is a web application built with the Phoenix web framework and the Ash framework. It appears to be a learning platform with features like study sets, flashcards, and games.
 
-- Use `mix precommit` alias when you are done with all changes and fix any pending issues
-- Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
-### Phoenix v1.8 guidelines
+This file contains important guidelines for working with the project. Please review it carefully before making changes.
 
-- **Always** begin your LiveView templates with `<Layouts.app flash={@flash} ...>` which wraps all inner content
-- The `MyAppWeb.Layouts` module is aliased in the `my_app_web.ex` file, so you can use it without needing to alias it again
-- Anytime you run into errors with no `current_scope` assign:
-  - You failed to follow the Authenticated Routes guidelines, or you failed to pass `current_scope` to `<Layouts.app>`
-  - **Always** fix the `current_scope` error by moving your routes to the proper `live_session` and ensure you pass `current_scope` as needed
-- Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. You are **forbidden** from calling `<.flash_group>` outside of the `layouts.ex` module
-- Out of the box, `core_components.ex` imports an `<.icon name="hero-x-mark" class="w-5 h-5"/>` component for for hero icons. **Always** use the `<.icon>` component for icons, **never** use `Heroicons` modules or similar
-- **Always** use the imported `<.input>` component for form inputs from `core_components.ex` when available. `<.input>` is imported and using it will will save steps and prevent errors
-- If you override the default input classes (`<.input class="myclass px-2 py-1 rounded-lg">)`) class with your own values, no default classes are inherited, so your
-custom classes must fully style the input
+## Getting Started
+
+To set up the development environment, run the following commands:
+
+1.  **Install dependencies:**
+    ```bash
+    mix setup
+    ```
+    This command will install all project dependencies, set up Ash resources, and build assets.
+
+2.  **Start the server:**
+    ```bash
+    mix phx.server
+    ```
+    Or, to run inside an IEx session:
+    ```bash
+    iex -S mix phx.server
+    ```
+    The application will be available at `http://localhost:4000`.
+
+## Development
+
+### Running the Application
+
+-   **Start the Phoenix server:** `mix phx.server`
+-   **Run inside IEx:** `iex -S mix phx.server`
+
+### Code Generation and Project Patching
+
+This project uses `igniter` for code generation and project patching. Refer to the `igniter` usage rules for more information.
+
+## Testing
+
+-   **Run all tests:**
+    ```bash
+    mix test
+    ```
+-   **Run tests in a specific file:**
+    ```bash
+    mix test path/to/test.exs
+    ```
+-   **Run a specific test:**
+    ```bash
+    mix test path/to/test.exs:123
+    ```
+-   **Run previously failed tests:**
+    ```bash
+    mix test --failed
+    ```
+-   **Debug test failures:**
+    To see the output of a failing test, you can use the following command:
+    ```bash
+    mix test --trace > test_nav.log 2>&1 || true && sed -n '1,160p' test_nav.log && rm -f test_nav.log
+    ```
+
+## Conventions and Best Practices
+
+### General
+
+-   **Pre-commit checks:** Before committing any changes, run `mix precommit`. This will compile the code with warnings as errors, check for unused dependencies, format the code, and run tests.
+-   **HTTP client:** Use the `:req` library for all HTTP requests.
+
+### Phoenix v1.8
+
+-   **Layouts:** Always begin LiveView templates with `<Layouts.app flash={@flash} ...>`.
+-   **`current_scope`:** Ensure `current_scope` is assigned correctly in authenticated routes.
+-   **Flash messages:** Do not call `<.flash_group>` outside of the `layouts.ex` module.
+-   **Icons:** Use the `<.icon>` component for Heroicons.
+-   **Form inputs:** Use the `<.input>` component from `core_components.ex`.
+
+### Elixir
+
+-   **List access:** Use `Enum.at/2` for index-based list access.
+-   **Immutability:** Bind the result of block expressions (like `if`, `case`, `cond`) to a variable.
+-   **Module nesting:** Do not nest multiple modules in the same file.
+-   **Struct access:** Use `my_struct.field` to access struct fields, not `changeset[:field]`.
+-   **Date and time:** Use Elixir's standard library for date and time manipulation.
+-   **`String.to_atom/1`:** Do not use `String.to_atom/1` on user input.
+-   **Predicate functions:** Predicate function names should end with a question mark (e.g., `is_thing?`).
+-   **OTP:** Use names in the child spec for `DynamicSupervisor` and `Registry`.
+-   **Concurrency:** Use `Task.async_stream/3` for concurrent enumeration.
+
+### Mix
+
+-   **Help:** Use `mix help <task_name>` to get information about a task.
+-   **`mix deps.clean --all`:** Avoid using this command unless absolutely necessary.
+
+### Phoenix
+
+-   **Router scopes:** Be mindful of the `alias` option in router `scope` blocks.
+-   **`Phoenix.View`:** This module is no longer used.
+
+### Ecto
+
+-   **Preloading:** Always preload associations that will be accessed in templates.
+-   **Seeds:** Remember to `import Ecto.Query` in `seeds.exs`.
+-   **Schema fields:** Use `:string` for text columns.
+-   **`validate_number/2`:** This function does not support `:allow_nil`.
+-   **Changeset fields:** Use `Ecto.Changeset.get_field/2` to access changeset fields.
+-   **Programmatic fields:** Do not list programmatically set fields (like `user_id`) in `cast` calls.
+
+### Phoenix HTML (HEEx)
+
+-   **Templates:** Use `~H` or `.html.heex` files.
+-   **Forms:** Use `Phoenix.Component.form/1` and `Phoenix.Component.inputs_for/1`.
+-   **DOM IDs:** Add unique DOM IDs to key elements.
+-   **Conditionals:** Use `cond` or `case` for multiple conditionals, not `else if`.
+-   **Curly braces:** Use `phx-no-curly-interpolation` for literal curly braces in templates.
+-   **Class attributes:** Use list syntax `[...]` for conditional classes.
+-   **Collections:** Use `<%= for item <- @collection do %>` to generate template content from collections.
+-   **Comments:** Use `<%!-- comment --%>` for HTML comments.
+-- **Interpolation:** Use `{...}` for interpolation within tag attributes and `<%= ... %>` for interpolation of values and block constructs within tag bodies.
+
+### Phoenix LiveView
+
+-   **Navigation:** Use `<.link navigate={href}>` and `<.link patch={href}>` instead of `live_redirect` and `live_patch`.
+-   **LiveComponents:** Avoid using LiveComponents unless necessary.
+-   **Naming:** Name LiveViews with a `Live` suffix (e.g., `AppWeb.WeatherLive`).
+-   **JavaScript hooks:** Use `phx-update="ignore"` when a JS hook manages its own DOM.
+-   **Scripts:** Write JavaScript in the `assets/js` directory.
+
+#### LiveView Streams
+
+-   **Use streams:** Use streams for collections to avoid performance issues.
+-   **Template setup:** Use `phx-update="stream"` on the parent element and consume `@streams.stream_name`.
+-   **Filtering:** To filter a stream, refetch the data and re-stream the collection with `reset: true`.
+-   **Counting/empty states:** Track counts with a separate assign and use CSS for empty states.
+
+#### LiveView Tests
+
+-   **Assertions:** Use `Phoenix.LiveViewTest` and `LazyHTML` for assertions.
+-   **Form tests:** Use `render_submit/2` and `render_change/2`.
+-   **Element selection:** Use element IDs in tests.
+-   **Test outcomes:** Focus on testing outcomes rather than implementation details.
+
+#### Form Handling
+
+-   **`to_form/2`:** Use `to_form/2` to create forms in your LiveView.
+-   **Template access:** Access form fields in the template using `@form[:field]`.
+-   **Changesets:** Do not access changesets directly in the template.
 
 <!-- usage-rules-start -->
 <!-- usage-rules-header -->
@@ -578,3 +706,4 @@ _Utilities for integrating Ash and Phoenix_
 [ash_phoenix usage rules](deps/ash_phoenix/usage-rules.md)
 <!-- ash_phoenix-end -->
 <!-- usage-rules-end -->
+
