@@ -85,3 +85,49 @@ defmodule FlashwarsWeb.LearnLiveTest do
   #   refute html =~ "Next"
   # end
 end
+
+defmodule FlashwarsWeb.LearnSettingsUITest do
+  use FlashwarsWeb.ConnCase, async: true
+  import Phoenix.LiveViewTest
+  alias Flashwars.Test.LearningFixtures
+
+  setup do
+    {:ok, LearningFixtures.build_set(nil)}
+  end
+
+  defp sign_in(conn, user) do
+    {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user)
+    conn |> Phoenix.ConnTest.init_test_session(%{}) |> Plug.Conn.put_session("user_token", token)
+  end
+
+  test "settings panel toggles and renders", %{conn: conn, org: org, user: user, set: set} do
+    conn = sign_in(conn, user)
+    {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/learn")
+    _ = render(lv)
+    # Wait for header actions to render
+    try do
+      for _ <- 1..40 do
+        _ = render(lv)
+        if has_element?(lv, "[phx-click='toggle_settings']"), do: throw(:ready)
+        Process.sleep(50)
+      end
+    catch
+      :ready -> :ok
+    end
+
+    refute has_element?(lv, "#learn-settings-card")
+    _ = lv |> element("[phx-click='toggle_settings']") |> render_click()
+    # wait for panel to appear
+    try do
+      for _ <- 1..40 do
+        if has_element?(lv, "#learn-settings-card"), do: throw(:ok)
+        _ = render(lv)
+        Process.sleep(25)
+      end
+    catch
+      :ok -> :ok
+    end
+
+    assert has_element?(lv, "#learn-settings-card")
+  end
+end

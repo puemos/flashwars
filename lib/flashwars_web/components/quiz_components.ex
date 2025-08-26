@@ -32,14 +32,27 @@ defmodule FlashwarsWeb.QuizComponents do
       |> assign_new(:label, fn -> nil end)
 
     chunks = max(assigns[:chunks] || 1, 1)
-    chunk_size = assigns[:chunk_size] || 0
+    chunk_size = max(assigns[:chunk_size] || 0, 0)
     chunk = assigns[:chunk] |> max(1) |> min(chunks)
     offset = assigns[:offset] |> max(0) |> min(chunk_size)
 
-    pct = if chunk_size > 0, do: offset / chunk_size * 100.0, else: 0.0
+    pct =
+      if chunk_size > 0 do
+        Float.round(offset * 100.0 / chunk_size, 2)
+      else
+        0.0
+      end
+
+    label_pct =
+      if chunk_size > 0 do
+        centered = min(max(offset + 0.5, 0.0), chunk_size * 1.0)
+        Float.round(centered * 100.0 / chunk_size, 2)
+      else
+        0.0
+      end
+
     done = max(chunk - 1, 0)
     todo = max(chunks - chunk, 0)
-    badge_left = if chunks > 0, do: (chunk - 1 + pct / 100.0) / chunks * 100.0, else: 0.0
 
     base_id = assigns[:id] || "segtrack-#{chunks}-#{chunk_size}"
 
@@ -49,10 +62,10 @@ defmodule FlashwarsWeb.QuizComponents do
         chunk_size: chunk_size,
         chunk: chunk,
         offset: offset,
-        pct: Float.round(pct, 2),
+        pct: pct,
+        label_pct: label_pct,
         done: done,
         todo: todo,
-        badge_left: Float.round(badge_left, 2),
         base_id: base_id,
         # Roll when THIS value changes. Use label by default:
         label_key: :erlang.phash2(assigns[:label])
@@ -62,7 +75,7 @@ defmodule FlashwarsWeb.QuizComponents do
 
     ~H"""
     <div class="relative flex w-full items-center gap-2 select-none">
-      <div class="relative flex gap-2 w-full">
+      <div class="relative flex gap-4 w-full">
         <!-- completed -->
         <div
           :for={_ <- 1..@done}
@@ -78,26 +91,29 @@ defmodule FlashwarsWeb.QuizComponents do
             class="absolute left-0 top-0 h-full rounded-full bg-emerald-500 transition-all duration-300"
             style={"width: #{@pct}%"}
           />
+          <!-- badge within current segment -->
+          <div
+            :if={not is_nil(@label)}
+            id={"#{@base_id}-badge"}
+            class="transition-all absolute -top-2 w-8 h-8 rounded-full bg-emerald-500 text-white text-base font-bold flex items-center justify-center pointer-events-none overflow-hidden duration-300"
+            style={"left: calc(#{@pct}% + 5px); transform: translateX(-50%);"}
+            phx-update="replace"
+          >
+            <span
+              id={"#{@base_id}-label-#{@label_key}"}
+              class="block leading-none animate-roll-up animation-delay-150 opacity-0"
+            >
+              {@label}
+            </span>
+          </div>
         </div>
         
     <!-- upcoming -->
-        <div :for={_ <- 1..@todo} class="relative h-4 flex-1 rounded-full bg-slate-600"></div>
-        
-    <!-- badge across full track -->
         <div
-          :if={not is_nil(@label)}
-          id={"#{@base_id}-badge"}
-          class="transition-all absolute -top-2 w-8 h-8 rounded-full bg-emerald-500 text-white text-base font-bold flex items-center justify-center pointer-events-none overflow-hidden"
-          style={"left: #{@badge_left}%; transform: translateX(-50%);"}
-          phx-update="replace"
+          :for={_ <- 1..@todo}
+          :if={@todo > 0}
+          class="relative h-4 flex-1 rounded-full bg-slate-600"
         >
-          <!-- Replace this child ONLY when the watched value changes -->
-          <span
-            id={"#{@base_id}-label-#{@label_key}"}
-            class="block leading-none animate-roll-up"
-          >
-            {@label}
-          </span>
         </div>
       </div>
     </div>

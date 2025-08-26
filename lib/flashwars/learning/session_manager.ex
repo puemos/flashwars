@@ -23,6 +23,7 @@ defmodule Flashwars.Learning.SessionManager do
   @recent_window_hours 24
   @default_round_size 10
   @default_match_pairs 4
+  @default_types [:multiple_choice, :true_false, :free_text, :matching]
 
   # ========================================
   # Session Lifecycle - Core Logic Only
@@ -33,8 +34,15 @@ defmodule Flashwars.Learning.SessionManager do
   def create_session(user, study_set_id, mode, opts \\ []) do
     size = Keyword.get(opts, :size, @default_round_size)
     pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
+    types = Keyword.get(opts, :types, @default_types)
+    smart = Keyword.get(opts, :smart, true)
 
-    case generate_items_for_mode(user, study_set_id, mode, size: size, pair_count: pair_count) do
+    case generate_items_for_mode(user, study_set_id, mode,
+           size: size,
+           pair_count: pair_count,
+           types: types,
+           smart: smart
+         ) do
       [] ->
         {:error, :no_items}
 
@@ -114,8 +122,15 @@ defmodule Flashwars.Learning.SessionManager do
     mode = state.mode
     size = Keyword.get(opts, :size, @default_round_size)
     pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
+    types = Keyword.get(opts, :types, @default_types)
+    smart = Keyword.get(opts, :smart, true)
 
-    case generate_items_for_mode(user, study_set_id, mode, size: size, pair_count: pair_count) do
+    case generate_items_for_mode(user, study_set_id, mode,
+           size: size,
+           pair_count: pair_count,
+           types: types,
+           smart: smart
+         ) do
       [] ->
         {:error, :no_items}
 
@@ -241,9 +256,16 @@ defmodule Flashwars.Learning.SessionManager do
   defp generate_items_for_mode(user, study_set_id, :learn, opts) do
     size = Keyword.get(opts, :size, @default_round_size)
     pair_count = Keyword.get(opts, :pair_count, @default_match_pairs)
+    types = Keyword.get(opts, :types, @default_types)
+    smart = Keyword.get(opts, :smart, true)
 
     try do
-      Engine.generate_learn_round(user, study_set_id, size: size, pair_count: pair_count)
+      Engine.generate_learn_round(user, study_set_id,
+        size: size,
+        pair_count: pair_count,
+        types: types,
+        smart: smart
+      )
     rescue
       error ->
         require Logger
