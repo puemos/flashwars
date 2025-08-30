@@ -635,6 +635,93 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           </:actions>
         </.header>
         
+    <!-- Settings panel (always available when toggled) -->
+        <div :if={@show_settings?} id="learn-settings-card" class="card bg-base-200 mt-4">
+          <div class="card-body">
+            <h4 class="font-semibold text-lg">Session Settings</h4>
+            <.form for={@settings_form} id="learn-settings" phx-change="settings_change">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                  <.input
+                    type="number"
+                    field={@settings_form[:size]}
+                    label="Round size"
+                    value={@learn_settings.size}
+                    min="3"
+                    max="50"
+                  />
+                </div>
+                <div>
+                  <.input
+                    type="number"
+                    field={@settings_form[:pair_count]}
+                    label="Matching pairs"
+                    value={@learn_settings.pair_count}
+                    min="2"
+                    max="10"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="label"><span class="label-text">Smart scheduling</span></label>
+                  <input
+                    type="checkbox"
+                    name="settings[smart]"
+                    value="true"
+                    class="toggle"
+                    checked={@learn_settings.smart}
+                  />
+                </div>
+                <div>
+                  <div class="label"><span class="label-text">Question types</span></div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center gap-4 text-sm">
+                      <input
+                        type="checkbox"
+                        name="settings[types][multiple_choice]"
+                        checked={Enum.member?(@learn_settings.types, :multiple_choice)}
+                        class="checkbox checkbox-sm"
+                      />
+                      <span>Multiple choice</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="settings[types][true_false]"
+                        checked={Enum.member?(@learn_settings.types, :true_false)}
+                        class="checkbox checkbox-sm"
+                      />
+                      <span>True/False</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="settings[types][free_text]"
+                        checked={Enum.member?(@learn_settings.types, :free_text)}
+                        class="checkbox checkbox-sm"
+                      />
+                      <span>Free text</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="settings[types][matching]"
+                        checked={Enum.member?(@learn_settings.types, :matching)}
+                        class="checkbox checkbox-sm"
+                      />
+                      <span>Matching</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </.form>
+            <div class="mt-3">
+              <.button phx-click="restart" class="btn btn-sm">
+                Start New Session With Settings
+              </.button>
+            </div>
+          </div>
+        </div>
+
     <!-- Session loading state -->
         <div :if={!@session_state} class="flex justify-center py-8">
           <div class="loading loading-spinner loading-lg"></div>
@@ -661,92 +748,6 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           class="space-y-6"
           phx-window-keydown={if @answered?, do: "any_key"}
         >
-          <!-- Settings panel -->
-          <div :if={@show_settings?} id="learn-settings-card" class="card bg-base-200">
-            <div class="card-body">
-              <h4 class="font-semibold text-lg">Session Settings</h4>
-              <.form for={@settings_form} id="learn-settings" phx-change="settings_change">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                  <div>
-                    <.input
-                      type="number"
-                      field={@settings_form[:size]}
-                      label="Round size"
-                      value={@learn_settings.size}
-                      min="3"
-                      max="50"
-                    />
-                  </div>
-                  <div>
-                    <.input
-                      type="number"
-                      field={@settings_form[:pair_count]}
-                      label="Matching pairs"
-                      value={@learn_settings.pair_count}
-                      min="2"
-                      max="10"
-                    />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <label class="label"><span class="label-text">Smart scheduling</span></label>
-                    <input
-                      type="checkbox"
-                      name="settings[smart]"
-                      value="true"
-                      class="toggle"
-                      checked={@learn_settings.smart}
-                    />
-                  </div>
-                  <div>
-                    <div class="label"><span class="label-text">Question types</span></div>
-                    <div class="grid grid-cols-2 gap-2">
-                      <label class="flex items-center gap-4 text-sm">
-                        <input
-                          type="checkbox"
-                          name="settings[types][multiple_choice]"
-                          checked={Enum.member?(@learn_settings.types, :multiple_choice)}
-                          class="checkbox checkbox-sm"
-                        />
-                        <span>Multiple choice</span>
-                      </label>
-                      <label class="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name="settings[types][true_false]"
-                          checked={Enum.member?(@learn_settings.types, :true_false)}
-                          class="checkbox checkbox-sm"
-                        />
-                        <span>True/False</span>
-                      </label>
-                      <label class="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name="settings[types][free_text]"
-                          checked={Enum.member?(@learn_settings.types, :free_text)}
-                          class="checkbox checkbox-sm"
-                        />
-                        <span>Free text</span>
-                      </label>
-                      <label class="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name="settings[types][matching]"
-                          checked={Enum.member?(@learn_settings.types, :matching)}
-                          class="checkbox checkbox-sm"
-                        />
-                        <span>Matching</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </.form>
-              <div class="mt-3">
-                <.button phx-click="restart" class="btn btn-sm">
-                  Start New Session With Settings
-                </.button>
-              </div>
-            </div>
-          </div>
           <!-- Progress visualization -->
           <div class="mt-2 px-4 pb-2">
             <QC.segment_track

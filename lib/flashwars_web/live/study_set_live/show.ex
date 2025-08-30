@@ -405,11 +405,6 @@ defmodule FlashwarsWeb.StudySetLive.Show do
     }
   end
 
-  defp format_grade(:again), do: "Again"
-  defp format_grade(:hard), do: "Hard"
-  defp format_grade(:good), do: "Good"
-  defp format_grade(:easy), do: "Easy"
-
   defp format_privacy(:public), do: "Public"
   defp format_privacy(:private), do: "Private"
   defp format_privacy(:link_only), do: "Private"

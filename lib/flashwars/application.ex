@@ -19,7 +19,7 @@ defmodule Flashwars.Application do
       {Phoenix.PubSub, name: Flashwars.PubSub},
       FlashwarsWeb.Presence,
       {Registry, keys: :unique, name: Flashwars.Registry},
-      {DynamicSupervisor, name: Flashwars.GameTickerSupervisor, strategy: :one_for_one},
+      {DynamicSupervisor, name: Flashwars.GameOrchestratorSupervisor, strategy: :one_for_one},
       # Start a worker by calling: Flashwars.Worker.start_link(arg)
       # {Flashwars.Worker, arg},
       # Start to serve requests, typically the last entry

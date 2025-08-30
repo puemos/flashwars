@@ -104,29 +104,11 @@ defmodule FlashwarsWeb.LearnSettingsUITest do
     conn = sign_in(conn, user)
     {:ok, lv, _html} = live(conn, ~p"/orgs/#{org.id}/study_sets/#{set.id}/learn")
     _ = render(lv)
-    # Wait for header actions to render
-    try do
-      for _ <- 1..40 do
-        _ = render(lv)
-        if has_element?(lv, "[phx-click='toggle_settings']"), do: throw(:ready)
-        Process.sleep(50)
-      end
-    catch
-      :ready -> :ok
-    end
+    :ok = wait_for_selector(lv, "[phx-click='toggle_settings']")
 
     refute has_element?(lv, "#learn-settings-card")
     _ = lv |> element("[phx-click='toggle_settings']") |> render_click()
-    # wait for panel to appear
-    try do
-      for _ <- 1..40 do
-        if has_element?(lv, "#learn-settings-card"), do: throw(:ok)
-        _ = render(lv)
-        Process.sleep(25)
-      end
-    catch
-      :ok -> :ok
-    end
+    :ok = wait_for_selector(lv, "#learn-settings-card")
 
     assert has_element?(lv, "#learn-settings-card")
   end
@@ -173,7 +155,7 @@ defmodule FlashwarsWeb.LearnFlowE2ETest do
     # Open settings and restrict to multiple choice only, then restart session
     :ok = wait_for(fn -> has_element?(lv, "[phx-click='toggle_settings']") end)
     _ = lv |> element("[phx-click='toggle_settings']") |> render_click()
-
+    :ok = wait_for_selector(lv, "#learn-settings")
     _ =
       form(lv, "#learn-settings",
         settings: %{

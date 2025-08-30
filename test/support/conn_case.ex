@@ -22,6 +22,7 @@ defmodule FlashwarsWeb.ConnCase do
       use FlashwarsWeb, :verified_routes
 
       import FlashwarsWeb.ConnCase
+      import FlashwarsWeb.LiveTestHelpers
       import Phoenix.ConnTest
       import Plug.Conn
       # The default endpoint for testing

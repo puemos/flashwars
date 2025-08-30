@@ -304,11 +304,6 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
     }
   end
 
-  defp format_grade(:again), do: "Again"
-  defp format_grade(:hard), do: "Hard"
-  defp format_grade(:good), do: "Good"
-  defp format_grade(:easy), do: "Easy"
-
   # Build recap list from round term_ids
   defp build_round_recap(user, study_set_id, round_terms) do
     term_ids = Enum.uniq(Enum.reject(round_terms, &is_nil/1))

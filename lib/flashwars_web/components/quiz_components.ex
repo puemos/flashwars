@@ -78,7 +78,7 @@ defmodule FlashwarsWeb.QuizComponents do
       <div class="relative flex gap-4 w-full">
         <!-- completed -->
         <div
-          :for={_ <- 1..@done}
+          :for={_ <- 1..@done//1}
           :if={@done > 0}
           class="relative h-4 flex-1 rounded-full bg-slate-600"
         >
@@ -110,7 +110,7 @@ defmodule FlashwarsWeb.QuizComponents do
         
     <!-- upcoming -->
         <div
-          :for={_ <- 1..@todo}
+          :for={_ <- 1..@todo//1}
           :if={@todo > 0}
           class="relative h-4 flex-1 rounded-full bg-slate-600"
         >
@@ -243,7 +243,10 @@ defmodule FlashwarsWeb.QuizComponents do
           <span :if={idx == 1} class="badge badge-success ml-1">Winner</span>
         </span>
         <span
-          data-test-id={"score-#{Slug.slugify(Map.get(@nicknames, entry.user_id))}"}
+          data-test-id={
+            "score-" <>
+              Slug.slugify((Map.get(@nicknames, entry.user_id) || entry.name || "player"))
+          }
           class="font-semibold tabular-nums"
         >
           {entry.score}

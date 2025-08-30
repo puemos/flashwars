@@ -1,16 +1,18 @@
 defmodule FlashwarsWeb.GameRoomLive.Duel do
   use FlashwarsWeb, :live_view
 
-  alias Phoenix.PubSub
   require Ash.Query
 
   alias Flashwars.Games
+  alias Flashwars.Games.Orchestrator
+  alias Flashwars.Games.Scoreboard
+  alias Flashwars.Games.Events
   alias Flashwars.Games.{PlayerInfo, GameRoomConfig}
   alias FlashwarsWeb.Presence
 
   alias FlashwarsWeb.QuizComponents
 
-  @topic_prefix "flash_wars:room:"
+  # room topic helpers provided by Flashwars.Games.Events
 
   # Load user from session if present; allow anonymous viewing
   on_mount {FlashwarsWeb.LiveUserAuth, :current_user}
@@ -52,17 +54,34 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   def handle_event("start", _params, %{assigns: %{room: room, host?: true}} = socket) do
     actor = socket.assigns.current_user
 
-    with {:ok, room} <- Games.start_game(room, actor: actor),
+    # Configure orchestrator timers for this room
+    _ =
+      Orchestrator.begin(room.id, actor,
+        strategy: strategy_from(socket.assigns.settings),
+        time_limit_ms: socket.assigns.settings[:time_limit_ms],
+        intermission_ms: intermission_ms(socket.assigns.settings)
+      )
+
+    with {:ok, room2} <- Games.start_game(room, actor: actor),
          {:ok, round} <-
            Games.generate_round(
              %{game_room_id: room.id, strategy: strategy_from(socket.assigns.settings)},
              actor: actor
            ) do
-      PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{event: :new_round, round: round})
+      tl = socket.assigns.settings[:time_limit_ms]
+
+      deadline =
+        if is_integer(tl) and tl > 0, do: System.monotonic_time(:millisecond) + tl, else: nil
+
+      Events.broadcast(room.id, %{
+        event: :new_round,
+        round: round,
+        deadline_mono: deadline
+      })
 
       {:noreply,
        socket
-       |> assign(:room, room)
+       |> assign(:room, room2)
        |> assign(:current_round, round)
        |> assign(:answered?, false)
        |> assign(:round_closed?, false)
@@ -71,8 +90,9 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
        |> assign(:intermission_deadline_mono, nil)
        |> assign(:nicknames, socket.assigns.nicknames)
        |> assign(:my_name, socket.assigns.my_name)
-       |> setup_round_timer()
-       |> assign(:scoreboard, fetch_scoreboard(room, actor))}
+       |> start_round_tick()
+       |> maybe_set_round_deadline(%{deadline_mono: deadline})
+       |> assign(:scoreboard, Scoreboard.for_room(room2))}
     else
       _ -> {:noreply, socket}
     end
@@ -149,7 +169,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
           end
 
           # Close the round on the first submission, reveal to everyone
-          PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+          Events.broadcast(socket.assigns.room.id, %{
             event: :round_closed,
             round_id: round.id,
             user_id: actor && actor.id,
@@ -162,7 +182,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
            socket
            |> assign(:answered?, true)
            |> assign(:selected_index, idx)
-           |> assign(:scoreboard, fetch_scoreboard(socket.assigns.room, actor))}
+           |> assign(:scoreboard, Scoreboard.for_room(socket.assigns.room))}
         end
     end
   end
@@ -172,7 +192,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     if socket.assigns.intermission_rid == rid do
       new_set = MapSet.put(socket.assigns.ready_user_ids, uid)
 
-      PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+      Events.broadcast(socket.assigns.room.id, %{
         event: :ready,
         rid: rid,
         user_id: uid
@@ -186,8 +206,12 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
   def handle_event("ready", _params, socket), do: {:noreply, socket}
 
-  def handle_event("override_next", %{"rid" => rid}, %{assigns: %{host?: true}} = socket) do
-    send(self(), {:next_round, rid})
+  def handle_event(
+        "override_next",
+        %{"rid" => _rid},
+        %{assigns: %{host?: true, room: room}} = socket
+      ) do
+    _ = Orchestrator.force_next(room.id)
     {:noreply, socket}
   end
 
@@ -236,7 +260,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
      |> assign(:final_scoreboard, nil)
      |> assign(:round_deadline_mono, nil)
      |> assign(:now_mono, nil)
-     |> assign(:scoreboard, fetch_scoreboard(room, actor))}
+     |> assign(:scoreboard, Scoreboard.for_room(room))}
   end
 
   def handle_event("restart", _params, socket), do: {:noreply, socket}
@@ -305,29 +329,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     {:noreply, assign(socket, :presences, presence_list_safe(socket.assigns.topic))}
   end
 
-  def handle_info({:time_up, rid}, %{assigns: %{host?: true}} = socket) do
-    case socket.assigns.current_round do
-      %{id: ^rid} = round ->
-        qd = round.question_data || %{}
-        answer_index = qd[:answer_index] || qd["answer_index"] || 0
-
-        PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
-          event: :round_closed,
-          round_id: round.id,
-          user_id: nil,
-          selected_index: nil,
-          correct_index: answer_index,
-          correct?: false
-        })
-
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_info({:next_round, rid}, %{assigns: %{host?: true}} = socket) do
+  # Intermission over: host generates next round or ends game
+  def handle_info(%{event: :intermission_over, rid: rid}, %{assigns: %{host?: true}} = socket) do
     case socket.assigns.current_round do
       %{id: ^rid} ->
         actor = socket.assigns.current_user
@@ -335,8 +338,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
         if socket.assigns.current_round.number >= limit do
           with {:ok, room} <- Games.end_game(socket.assigns.room, actor: actor) do
-            # Inform everyone
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{event: :game_over})
+            Events.broadcast(socket.assigns.room.id, %{event: :game_over})
             {:noreply, assign(socket, :room, room)}
           else
             _ -> {:noreply, socket}
@@ -350,9 +352,17 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
                    },
                    actor: actor
                  ) do
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+            tl = socket.assigns.settings[:time_limit_ms]
+
+            deadline =
+              if is_integer(tl) and tl > 0,
+                do: System.monotonic_time(:millisecond) + tl,
+                else: nil
+
+            Events.broadcast(socket.assigns.room.id, %{
               event: :new_round,
-              round: round
+              round: round,
+              deadline_mono: deadline
             })
 
             {:noreply,
@@ -362,8 +372,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
              |> assign(:round_closed?, false)
              |> assign(:selected_index, nil)
              |> assign(:reveal, nil)
-             |> setup_round_timer()
-             |> assign(:scoreboard, fetch_scoreboard(socket.assigns.room, actor))}
+             |> assign(:scoreboard, Scoreboard.for_room(socket.assigns.room))}
           else
             _ -> {:noreply, socket}
           end
@@ -383,7 +392,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       socket =
         if socket.assigns.host? do
           if threshold_met?(socket) do
-            send(self(), {:next_round, rid})
+            _ = Orchestrator.force_next(socket.assigns.room.id)
           end
 
           socket
@@ -397,7 +406,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
-  def handle_info(%{event: :new_round, round: round}, socket) do
+  def handle_info(%{event: :new_round, round: round} = evt, socket) do
     {:noreply,
      socket
      |> assign(:current_round, round)
@@ -409,19 +418,15 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
      |> assign(:intermission_deadline_mono, nil)
      |> assign(:intermission_rid, nil)
      |> assign(:ready_user_ids, MapSet.new())
-     |> setup_round_timer()
-     |> assign(:scoreboard, fetch_scoreboard(socket.assigns.room, socket.assigns.current_user))}
+     |> maybe_set_round_deadline(evt)
+     |> start_round_tick()
+     |> assign(:scoreboard, Scoreboard.for_room(socket.assigns.room))}
   end
 
   def handle_info(%{event: :game_over}, socket) do
-    # Build final scoreboard including player info from room config
-    base = fetch_scoreboard(socket.assigns.room, socket.assigns.current_user)
-    player_entries = get_player_entries(socket.assigns.room)
-    merged = merge_player_scores(base, player_entries)
-
     {:noreply,
      socket
-     |> assign(:final_scoreboard, merged)
+     |> assign(:final_scoreboard, Scoreboard.final_for_room(socket.assigns.room))
      |> assign(:room, %{socket.assigns.room | state: :ended, ended_at: DateTime.utc_now()})}
   end
 
@@ -451,10 +456,6 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   # behavior (host schedules next round and sets answered? based on who answered first).
   defp apply_round_closed(socket, rid, uid, sidx, aidx, correct?) do
     im = intermission_ms(socket.assigns.settings)
-
-    if socket.assigns.host? do
-      Process.send_after(self(), {:next_round, rid}, im)
-    end
 
     socket =
       socket
@@ -499,7 +500,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               last_seen: DateTime.utc_now()
             })
           else
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+            Events.broadcast(socket.assigns.room.id, %{
               event: :player_info_update,
               player_key: player_key,
               player_info: %PlayerInfo{
@@ -540,7 +541,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
               last_seen: DateTime.utc_now()
             })
           else
-            PubSub.broadcast(Flashwars.PubSub, socket.assigns.topic, %{
+            Events.broadcast(socket.assigns.room.id, %{
               event: :player_info_update,
               player_key: player_key,
               player_info: %PlayerInfo{
@@ -583,8 +584,8 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   end
 
   defp setup_for_room(room, socket) do
-    topic = topic(room.id)
-    if connected?(socket), do: Phoenix.PubSub.subscribe(Flashwars.PubSub, topic)
+    topic = Events.topic(room.id)
+    if connected?(socket), do: Events.subscribe(room.id)
 
     # Load latest round without auth to support link-only guests from other orgs
     current_round =
@@ -610,9 +611,9 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
      |> assign(:settings_form, Phoenix.Component.to_form(%{}, as: :settings))
      |> assign(
        :host?,
-       socket.assigns.current_user && socket.assigns.current_user.id == room.host_id
+       not is_nil(socket.assigns.current_user) and socket.assigns.current_user.id == room.host_id
      )
-     |> assign(:scoreboard, fetch_scoreboard(room, socket.assigns.current_user))
+     |> assign(:scoreboard, Scoreboard.for_room(room))
      |> assign(:settings, settings_from_room(room))
      |> maybe_track_presence(topic)}
   end
@@ -790,50 +791,9 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     present > 0 and ready >= needed
   end
 
-  defp topic(id), do: @topic_prefix <> to_string(id)
+  # topic helper provided by Flashwars.Games.Events
 
-  defp fetch_scoreboard(_room, nil), do: []
-
-  defp fetch_scoreboard(room, actor) do
-    subs =
-      Games.list_submissions_for_room!(room.id, actor: actor, load: [:user])
-
-    subs
-    |> Enum.group_by(& &1.user_id)
-    |> Enum.map(fn {user_id, subs} ->
-      total = Enum.reduce(subs, 0, fn s, acc -> acc + (s.score || 0) end)
-      user = subs |> List.first() |> Map.get(:user)
-      %{user_id: user_id, user: user, name: display_name(user), score: total}
-    end)
-    |> Enum.sort_by(& &1.score, :desc)
-  end
-
-  defp get_player_entries(%{config: config}) do
-    players = config.players || %{}
-
-    players
-    |> Map.values()
-    |> Enum.map(fn player_info ->
-      %{
-        user_id: if(player_info.user_id, do: String.to_integer(player_info.user_id), else: nil),
-        user: nil,
-        name: player_info.nickname,
-        score: 0
-      }
-    end)
-  rescue
-    _ -> []
-  end
-
-  defp merge_player_scores(user_entries, player_entries) do
-    # Merge players whose names are not present in user entries. Keep existing order by score.
-    existing_names = MapSet.new(Enum.map(user_entries, & &1.name))
-
-    new_player_entries =
-      Enum.reject(player_entries, fn p -> MapSet.member?(existing_names, p.name) end)
-
-    user_entries ++ new_player_entries
-  end
+  # scoreboard helpers moved to Games.Scoreboard
 
   defp settings_from_room(%{config: config}) do
     %{
@@ -897,30 +857,20 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     socket |> assign(:now_mono, System.monotonic_time(:millisecond))
   end
 
-  defp setup_round_timer(%{assigns: %{current_round: nil}} = socket), do: socket
+  defp start_round_tick(%{assigns: %{current_round: nil}} = socket), do: socket
 
-  defp setup_round_timer(%{assigns: %{settings: settings}} = socket) do
-    tl = settings[:time_limit_ms] || settings["time_limit_ms"]
-
-    cond do
-      is_integer(tl) and tl > 0 ->
-        deadline = System.monotonic_time(:millisecond) + tl
-
-        if socket.assigns.host? do
-          Process.send_after(self(), {:time_up, socket.assigns.current_round.id}, tl)
-        end
-
-        # start ticking
-        Process.send_after(self(), :tick, 1000)
-
-        socket
-        |> assign(:round_deadline_mono, deadline)
-        |> assign(:now_mono, System.monotonic_time(:millisecond))
-
-      true ->
-        socket |> assign(:round_deadline_mono, nil) |> assign(:now_mono, nil)
-    end
+  defp start_round_tick(socket) do
+    Process.send_after(self(), :tick, 1000)
+    socket |> assign(:now_mono, System.monotonic_time(:millisecond))
   end
+
+  defp maybe_set_round_deadline(socket, %{deadline_mono: deadline}) do
+    socket |> assign(:round_deadline_mono, deadline)
+  end
+
+  defp maybe_set_round_deadline(socket, _evt), do: assign(socket, :round_deadline_mono, nil)
+
+  # Orchestrator handles timers; we only set deadline for client display
 
   defp ms_remaining(nil, _now), do: nil
 
@@ -1107,7 +1057,7 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
         </div>
       </div>
 
-      <div :if={!@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
+      <div :if={@room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
           <h3 class="card-title">Your Game Name</h3>
           <.form for={%{}} as={:name} id="duel-name-form" phx-submit="set_name" phx-hook="GuestName">

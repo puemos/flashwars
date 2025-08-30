@@ -75,6 +75,7 @@ defmodule FlashwarsWeb.FlashcardsLiveTest do
     assert html =~ "Round 1 recap"
 
     # Continue to next round
+    :ok = wait_for_selector(lv, "#flashcards-recap-overlay button")
     _ = lv |> element("#flashcards-recap-overlay button", "Next Round") |> render_click()
 
     # Overlay remains in DOM but should be hidden now; check for hidden class on root overlay
