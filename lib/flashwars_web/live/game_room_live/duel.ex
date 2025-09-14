@@ -257,6 +257,19 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
     end
   end
 
+  def handle_event("apply_game_preset", %{"preset" => preset}, socket) do
+    s = socket.assigns.settings
+    new =
+      case preset do
+        "fast" -> %{s | rounds: 5, time_limit_ms: 8_000, intermission_ms: 6_000}
+        "standard" -> %{s | rounds: 10, time_limit_ms: 12_000, intermission_ms: 10_000}
+        "marathon" -> %{s | rounds: 20, time_limit_ms: 15_000, intermission_ms: 12_000}
+        _ -> s
+      end
+
+    {:noreply, assign(socket, :settings, new)}
+  end
+
   def handle_event("restart", _params, %{assigns: %{host?: true}} = socket) do
     actor = socket.assigns.current_user
     rid = socket.assigns.room.id
@@ -851,8 +864,19 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
   defp parse_settings(params, current_config) do
     rounds = parse_int(params["rounds"]) || 10
     types = params["types"] || []
-    time_limit_ms = parse_int(params["time_limit_ms"])
-    intermission_ms = parse_int(params["intermission_ms"]) || 10_000
+    # Support seconds or ms inputs; seconds take precedence
+    time_limit_ms =
+      case {parse_int(params["time_limit_seconds"]), parse_int(params["time_limit_ms"]) } do
+        {sec, _} when is_integer(sec) -> sec * 1000
+        {_, ms} -> ms
+      end
+
+    intermission_ms =
+      case {parse_int(params["intermission_seconds"]), parse_int(params["intermission_ms"]) } do
+        {sec, _} when is_integer(sec) -> sec * 1000
+        {_, ms} -> (ms || 10_000)
+      end
+
     privacy = parse_privacy(params["privacy"]) || :private
 
     # Preserve existing players when updating settings
@@ -1014,83 +1038,50 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
 
       <div :if={@host? && @room.state == :lobby} class="card bg-base-200 mb-4">
         <div class="card-body">
-          <h3 class="card-title">Game Settings</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="card-title">Game Settings</h3>
+            <div class="flex gap-2">
+              <button class="btn btn-xs" phx-click="apply_game_preset" phx-value-preset="fast">Fast</button>
+              <button class="btn btn-xs" phx-click="apply_game_preset" phx-value-preset="standard">Standard</button>
+              <button class="btn btn-xs" phx-click="apply_game_preset" phx-value-preset="marathon">Marathon</button>
+            </div>
+          </div>
 
           <.form for={@settings_form} id="duel-settings-form" phx-submit="save_settings">
-            <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <.input name="settings[rounds]" label="Rounds" type="number" value={@settings.rounds} />
-              <.input
-                name="settings[time_limit_ms]"
-                label="Time limit (ms)"
-                type="number"
-                value={@settings.time_limit_ms}
-              />
-              <.input
-                name="settings[intermission_ms]"
-                label="Intermission (ms)"
-                type="number"
-                value={@settings.intermission_ms}
-              />
-              <.input
-                name="settings[privacy]"
-                label="Privacy"
-                type="select"
-                options={[{"Private", "private"}, {"Link only", "link_only"}, {"Public", "public"}]}
-                value={Atom.to_string(@room.privacy)}
-              />
+            <div class="grid grid-cols-1 sm:grid-cols-5 gap-4">
+              <.input name="settings[rounds]" label="Rounds" type="number" value={@settings.rounds} min="3" max="30" />
+              <.input name="settings[time_limit_seconds]" label="Time limit (seconds)" type="number" value={if @settings.time_limit_ms, do: div(@settings.time_limit_ms, 1000), else: nil} min="0" step="1" />
+              <.input name="settings[intermission_seconds]" label="Intermission (seconds)" type="number" value={if @settings.intermission_ms, do: div(@settings.intermission_ms, 1000), else: 10} min="5" step="1" />
+              <div class="sm:col-span-2">
+                <label class="block text-sm font-medium mb-1">Privacy</label>
+                <div class="flex gap-3">
+                  <label class="flex items-center gap-2"><input type="radio" name="settings[privacy]" value="private" checked={@room.privacy == :private} /> Private</label>
+                  <label class="flex items-center gap-2"><input type="radio" name="settings[privacy]" value="link_only" checked={@room.privacy == :link_only} /> Link only</label>
+                  <label class="flex items-center gap-2"><input type="radio" name="settings[privacy]" value="public" checked={@room.privacy == :public} /> Public</label>
+                </div>
+              </div>
             </div>
 
             <div class="mt-4">
               <label class="block text-sm font-medium">Question Types</label>
-              <div class="flex gap-4 mt-2">
-                <label class="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="settings[types][]"
-                    value="multiple_choice"
-                    checked={Enum.member?(@settings.types, "multiple_choice")}
-                  /> Multiple choice
+              <div class="flex flex-wrap gap-3 mt-2">
+                <label class="badge gap-2 cursor-pointer select-none">
+                  <input type="checkbox" name="settings[types][]" value="multiple_choice" checked={Enum.member?(@settings.types, "multiple_choice")} class="checkbox checkbox-xs" />
+                  <span>Multiple choice</span>
                 </label>
-                <label class="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="settings[types][]"
-                    value="true_false"
-                    checked={Enum.member?(@settings.types, "true_false")}
-                  /> True/False
-                </label>
-                <label class="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="settings[types][]"
-                    value="free_text"
-                    checked={Enum.member?(@settings.types, "free_text")}
-                  /> Free text
-                </label>
-                <label class="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="settings[types][]"
-                    value="matching"
-                    checked={Enum.member?(@settings.types, "matching")}
-                  /> Matching
+                <label class="badge gap-2 cursor-pointer select-none">
+                  <input type="checkbox" name="settings[types][]" value="true_false" checked={Enum.member?(@settings.types, "true_false")} class="checkbox checkbox-xs" />
+                  <span>True/False</span>
                 </label>
               </div>
+              <div class="text-xs opacity-70 mt-1">Other types coming soon</div>
             </div>
 
             <div :if={@room.privacy == :link_only} class="mt-4">
-              <label class="block text-sm font-medium">Copy Invitation Link</label>
+              <label class="block text-sm font-medium">Invitation Link</label>
               <div class="flex gap-2 items-center mt-2">
                 <input class="input flex-1" type="text" readonly value={invitation_link(@room)} />
-                <button
-                  id="copy-invite"
-                  type="button"
-                  class="btn btn-secondary"
-                  phx-hook="CopyToClipboard"
-                  data-text={invitation_link(@room)}
-                >
-                  Copy
-                </button>
+                <button id="copy-invite" type="button" class="btn btn-secondary" phx-hook="CopyToClipboard" data-text={invitation_link(@room)}>Copy</button>
               </div>
             </div>
 
@@ -1128,27 +1119,38 @@ defmodule FlashwarsWeb.GameRoomLive.Duel do
       </div>
 
       <div :if={@current_round && @room.state != :ended} id="duel-round" class="space-y-4">
-        <div class="card bg-base-200">
-          <div class="card-body">
-            <div class="text-sm opacity-70">
-              Question {@current_round.number} of {@settings.rounds}
-            </div>
-
-            <h3 class="text-xl font-semibold">
-              {@current_round.question_data[:prompt] || @current_round.question_data["prompt"] || ""}
-            </h3>
-
-            <QuizComponents.choices
-              choices={
-                @current_round.question_data[:choices] || @current_round.question_data["choices"] ||
-                  []
-              }
-              reveal={@reveal}
-              round_closed?={@round_closed?}
-              answered?={@answered?}
-            />
+      <div class="card bg-base-200">
+        <div class="card-body">
+          <div class="text-sm opacity-70">
+            Question {@current_round.number} of {@settings.rounds}
           </div>
+
+          <% qd = @current_round.question_data || %{} %>
+          <% kind = qd[:kind] || qd["kind"] || "multiple_choice" %>
+
+          <h3 class="text-xl font-semibold">
+            {qd[:prompt] || qd["prompt"] || ""}
+          </h3>
+
+          <%= case kind do %>
+            <% "true_false" -> %>
+              <QuizComponents.true_false
+                definition={qd[:definition] || qd["definition"] || ""}
+                choices={qd[:choices] || qd["choices"] || ["True", "False"]}
+                reveal={@reveal}
+                round_closed?={@round_closed?}
+                answered?={@answered?}
+              />
+            <% _ -> %>
+              <QuizComponents.choices
+                choices={qd[:choices] || qd["choices"] || []}
+                reveal={@reveal}
+                round_closed?={@round_closed?}
+                answered?={@answered?}
+              />
+          <% end %>
         </div>
+      </div>
 
         <div class="card bg-base-100">
           <div class="card-body">

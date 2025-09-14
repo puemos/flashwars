@@ -11,6 +11,10 @@ defmodule FlashwarsWeb.Components.RecapOverlay do
   attr :continue_event, :string, required: true
   attr :continue_label, :string, default: "Next Round"
   attr :empty_text, :string, default: "No items to recap."
+  # Presentation variant: :overlay (modal) or :inline (panel in flow)
+  attr :variant, :atom, default: :overlay
+  # Optional auto-advance (client-only via hook). 0 disables.
+  attr :auto_advance_ms, :integer, default: 0
   # Gamify options
   # Optional gamification props (if nil, derived heuristically)
   attr :level, :integer, default: nil
@@ -33,118 +37,200 @@ defmodule FlashwarsWeb.Components.RecapOverlay do
       |> assign_new(:eff_streak, fn assigns -> assigns[:streak] end)
 
     ~H"""
-    <div
-      id={@id}
-      class={["fixed inset-0 z-50", @show && "block", !@show && "hidden"]}
-      phx-hook="OverlayDismiss"
-      data-push-event={@continue_event}
-      data-on-escape="true"
-    >
+    <%= if @variant == :overlay do %>
       <div
-        id={@id <> "-scrim"}
-        class="absolute inset-0 bg-base-300/60 backdrop-blur-sm"
+        id={@id}
+        class={["fixed inset-0 z-50", @show && "block", !@show && "hidden"]}
         phx-hook="OverlayDismiss"
         data-push-event={@continue_event}
+        data-on-escape="true"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={@id <> "-title"}
       >
-      </div>
-      <div class="relative h-full flex flex-col justify-end md:flex md:items-center md:justify-center md:h-auto md:mt-10 md:transform md:translate-y-1/4">
         <div
-          id={@id <> "-card"}
-          class="recap-card card bg-base-300/80 border-2 border-base-100 shadow-2xl h-full overflow-hidden md:rounded-2xl rounded-none mx-auto w-full max-w-3xl transition-all duration-300 opacity-0 translate-y-6"
-          phx-hook="PopIn"
+          id={@id <> "-scrim"}
+          class="absolute inset-0 bg-base-300/60 backdrop-blur-sm"
+          phx-hook="OverlayDismiss"
+          data-push-event={@continue_event}
         >
-          <!-- Gamified header -->
-          <div class="relative">
-            <div class="h-20 md:h-24 bg-base-400"></div>
-            <div class="absolute inset-0 flex items-center gap-3 md:gap-4 px-5">
-              <.icon name="hero-trophy" class="size-8 md:size-10 text-yellow-400 drop-shadow" />
-              <div>
-                <div class="uppercase text-xs opacity-80">{@title}</div>
-                <div class="text-xl md:text-2xl font-extrabold">Round Clear!</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card-body">
-            <%= if @subtitle do %>
-              <div class="text-base-content/80">{@subtitle}</div>
-            <% end %>
-            
-    <!-- Top row: level ring + rewards + stars -->
-            <div class="grid grid-cols-3 gap-4 items-center mt-2">
-              <div class="col-span-1 flex">
-                <.level_ring level={@eff_level} pct={@eff_level_progress} />
-              </div>
-              <div class="col-span-2">
-                <div class="flex items-center gap-2">
-                  <span class="badge badge-warning">
-                    <.icon name="hero-sparkles" class="size-4" />
-                    <span class="ml-1">
-                      <span
-                        id={@id <> "-xp"}
-                        phx-hook="CountTo"
-                        data-count-to={@eff_xp || 0}
-                        data-count-ms="900"
-                      >
-                        0
-                      </span>
-                      XP
-                    </span>
-                  </span>
-                  <span :if={@eff_streak} class="badge badge-error">
-                    <.icon name="hero-fire" class="size-4" />
-                    <span class="ml-1">
-                      Streak
-                      <span id={@id <> "-streak"} phx-hook="CountTo" data-count-to={@eff_streak}>
-                        0
-                      </span>
-                    </span>
-                  </span>
-                </div>
-                <div class="mt-2">
-                  <.stars pct={@good_pct} />
-                </div>
-              </div>
-            </div>
-            
-    <!-- Progress toward mastery -->
-            <div class="mt-3">
-              <div class="flex items-center justify-between text-sm opacity-80 mb-1">
-                <div>Mastery Progress</div>
-                <div>
-                  <span
-                    id={@id <> "-pct"}
-                    phx-hook="CountTo"
-                    data-count-to={Float.round(@good_pct, 0)}
-                    data-count-ms="800"
-                  >0</span>%
-                </div>
-              </div>
-              <.progress pct={@good_pct} />
-            </div>
-            
-    <!-- Recap list -->
-            <ul class="divide-y divide-base-300 mt-4 overflow-y-auto max-h-[58vh]">
-              <li
-                :for={rec <- @items}
-                id={"recap-#{rec.term_id}"}
-                class="py-3 flex items-center justify-between"
-              >
-                <div class="font-medium">{rec.term}</div>
-                <span class={badge_class(rec.mastery)}>{rec.mastery}</span>
-              </li>
-            </ul>
-            <div :if={@items == []} class="opacity-70">{@empty_text}</div>
-
-            <div class="mt-5 flex gap-2">
-              <.button class="btn w-full btn-neutral" phx-click={@continue_event}>
-                {@continue_label}
-              </.button>
-            </div>
+        </div>
+        <div class="relative h-full flex flex-col justify-end md:flex md:items-center md:justify-center md:h-auto md:mt-10 md:transform md:translate-y-1/4">
+          <div
+            id={@id <> "-card"}
+            class="recap-card card bg-base-300/80 border-2 border-base-100 shadow-2xl h-full overflow-hidden md:rounded-2xl rounded-none mx-auto w-full max-w-3xl transition-all duration-300 opacity-0 translate-y-6"
+            phx-hook="PopIn"
+          >
+            <.recap_body
+              id={@id}
+              title={@title}
+              subtitle={@subtitle}
+              items={@items}
+              continue_event={@continue_event}
+              continue_label={@continue_label}
+              empty_text={@empty_text}
+              good_pct={@good_pct}
+              eff_level={@eff_level}
+              eff_level_progress={@eff_level_progress}
+              eff_xp={@eff_xp}
+              eff_streak={@eff_streak}
+              auto_advance_ms={@auto_advance_ms}
+            />
           </div>
         </div>
-        
-    <!-- No confetti (intentionally removed for lean mobile feel) -->
+      </div>
+    <% else %>
+      <div :if={@show} id={@id} class="mt-4">
+        <div class="card bg-base-200 border border-base-300 shadow-sm rounded-xl mx-auto w-full max-w-4xl">
+          <.recap_body
+            id={@id}
+            title={@title}
+            subtitle={@subtitle}
+            items={@items}
+            continue_event={@continue_event}
+            continue_label={@continue_label}
+            empty_text={@empty_text}
+            good_pct={@good_pct}
+            eff_level={@eff_level}
+            eff_level_progress={@eff_level_progress}
+            eff_xp={@eff_xp}
+            eff_streak={@eff_streak}
+            auto_advance_ms={@auto_advance_ms}
+          />
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  # Recap body shared between overlay and inline variants
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :subtitle, :string, default: nil
+  attr :items, :list, default: []
+  attr :continue_event, :string, required: true
+  attr :continue_label, :string, default: "Next Round"
+  attr :empty_text, :string, default: "No items to recap."
+  attr :good_pct, :float, required: true
+  attr :eff_level, :integer, required: true
+  attr :eff_level_progress, :float, required: true
+  attr :eff_xp, :integer, required: true
+  attr :eff_streak, :integer, default: nil
+  attr :auto_advance_ms, :integer, default: 0
+
+  def recap_body(assigns) do
+    assigns = assign(assigns, :sorted_items, sort_items(assigns.items))
+
+    ~H"""
+    <!-- Optional auto-advance and key shortcuts -->
+    <div
+      :if={@auto_advance_ms > 0}
+      id={@id <> "-auto"}
+      phx-hook="AutoPush"
+      data-push-event={@continue_event}
+      data-delay-ms={@auto_advance_ms}
+    ></div>
+
+    <div id={@id <> "-keys"} phx-hook="KeyPush" data-push-event={@continue_event} data-keys="Enter, Space"></div>
+
+    <!-- Header -->
+    <div class="relative">
+      <div class="h-16 md:h-20 bg-base-300 rounded-t-xl"></div>
+      <div class="absolute inset-0 flex items-center gap-3 md:gap-4 px-5">
+        <.icon name="hero-trophy" class="size-7 md:size-9 text-yellow-400 drop-shadow" />
+        <div>
+          <div id={@id <> "-title"} class="uppercase text-xs opacity-80">{@title}</div>
+          <div class="text-lg md:text-xl font-extrabold">Round Clear!</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div :if={@subtitle} class="text-base-content/80">{@subtitle}</div>
+
+      <!-- Metrics row -->
+      <div class="grid grid-cols-3 gap-4 items-center mt-2">
+        <div class="col-span-1 flex">
+          <.level_ring level={@eff_level} pct={@eff_level_progress} />
+        </div>
+        <div class="col-span-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="badge badge-warning">
+              <.icon name="hero-sparkles" class="size-4" />
+              <span class="ml-1">
+                <span
+                  id={@id <> "-xp"}
+                  phx-hook="CountTo"
+                  data-count-to={@eff_xp || 0}
+                  data-count-ms="900"
+                >
+                  0
+                </span>
+                XP
+              </span>
+            </span>
+            <span :if={@eff_streak} class="badge badge-error">
+              <.icon name="hero-fire" class="size-4" />
+              <span class="ml-1">
+                Streak
+                <span id={@id <> "-streak"} phx-hook="CountTo" data-count-to={@eff_streak}>0</span>
+              </span>
+            </span>
+            <span class="badge badge-ghost">
+              <.icon name="hero-check-badge" class="size-4" />
+              <span class="ml-1">{Float.round(@good_pct, 0)}% good</span>
+            </span>
+          </div>
+          <div class="mt-2">
+            <.stars pct={@good_pct} />
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress toward mastery -->
+      <div class="mt-3">
+        <div class="flex items-center justify-between text-sm opacity-80 mb-1">
+          <div>Mastery Progress</div>
+          <div>
+            <span id={@id <> "-pct"} phx-hook="CountTo" data-count-to={Float.round(@good_pct, 0)} data-count-ms="800">0</span>%
+          </div>
+        </div>
+        <.progress pct={@good_pct} />
+      </div>
+
+      <!-- Breakdown chips -->
+      <div class="mt-3 flex flex-wrap gap-2 text-xs">
+        <%= for {label, count, klass} <- breakdown(@items) do %>
+          <span class={klass}>
+            {label}
+            <span class="ml-1 font-medium">{count}</span>
+          </span>
+        <% end %>
+      </div>
+
+      <!-- Recap list inside details (collapsed by default for long lists) -->
+      <details class="mt-4" {if length(@items) <= 6, do: [open: true], else: []}>
+        <summary class="cursor-pointer text-sm opacity-80 list-none flex items-center gap-2">
+          <.icon name="hero-list-bullet" class="size-4" />
+          <span>Review items ({length(@items)})</span>
+        </summary>
+        <ul class="divide-y divide-base-300 mt-2 max-h-[50vh] overflow-y-auto">
+          <li
+            :for={rec <- @sorted_items}
+            id={"recap-#{rec.term_id}"}
+            class="py-3 flex items-center justify-between"
+          >
+            <div class="font-medium truncate pr-3">{rec.term}</div>
+            <span class={badge_class(rec.mastery)}>{rec.mastery}</span>
+          </li>
+        </ul>
+        <div :if={@items == []} class="opacity-70">{@empty_text}</div>
+      </details>
+
+      <div class="mt-5 flex gap-2">
+        <.button class="btn w-full btn-primary" phx-click={@continue_event}>
+          {@continue_label}
+        </.button>
       </div>
     </div>
     """
@@ -257,6 +343,22 @@ defmodule FlashwarsWeb.Components.RecapOverlay do
     level = div(total_xp, 1000) + 1
     level_progress = rem(total_xp, 1000) * 100.0 / 1000.0
     %{xp_earned: xp, level: level, level_progress: level_progress, mastery_pct: pct}
+  end
+
+  defp sort_items(items) do
+    # Prioritize tougher items first
+    order = %{"Struggling" => 0, "Practicing" => 1, "Unseen" => 2, "Mastered" => 3}
+    Enum.sort_by(items, fn rec -> {Map.get(order, rec.mastery, 99), rec.term} end)
+  end
+
+  defp breakdown(items) do
+    c = counts(items)
+    [
+      {"Mastered", c.mastered, "badge badge-success"},
+      {"Practicing", c.practicing, "badge badge-info"},
+      {"Struggling", c.struggling, "badge badge-warning"},
+      {"Unseen", c.unseen, "badge badge-ghost"}
+    ]
   end
 
   defp badge_class("Mastered"), do: "badge badge-success"

@@ -265,6 +265,7 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
         items={@round_recap}
         continue_event="start_next_round"
         continue_label="Next Round"
+        variant={:inline}
         xp_earned={@recap_rewards && @recap_rewards.xp_earned}
         level={@recap_rewards && @recap_rewards.level}
         level_progress={@recap_rewards && @recap_rewards.level_progress}

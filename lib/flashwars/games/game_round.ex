@@ -79,10 +79,18 @@ defmodule Flashwars.Games.GameRound do
               end
             end)
 
+          # Use room config types if present to generate the appropriate item kind
+          cfg_types =
+            case room.config do
+              %Flashwars.Games.GameRoomConfig{types: t} when is_list(t) -> t
+              %{} = m -> m[:types] || m["types"] || ["multiple_choice"]
+              _ -> ["multiple_choice"]
+            end
+
           item =
-            Flashwars.Learning.Engine.generate_item(room.study_set_id,
+            Flashwars.Learning.Engine.generate_game_item(room.study_set_id,
               exclude_term_ids: prev_term_ids,
-              strategy: Ash.Changeset.get_argument(changeset, :strategy)
+              types: cfg_types
             )
 
           changeset

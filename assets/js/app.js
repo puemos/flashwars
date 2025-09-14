@@ -11,6 +11,8 @@ import { SwipeDeckHook } from "./hooks/swipe_deck_hook";
 import { CountTo } from "./hooks/count_to";
 import { PopIn } from "./hooks/pop_in";
 import { OverlayDismiss } from "./hooks/overlay_dismiss";
+import { AutoPush } from "./hooks/auto_push";
+import { KeyPush } from "./hooks/key_push";
 
 const hooks = {
   MatchingDnD,
@@ -21,6 +23,8 @@ const hooks = {
   CountTo,
   PopIn,
   OverlayDismiss,
+  AutoPush,
+  KeyPush,
 };
 
 const csrfToken = document

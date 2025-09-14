@@ -56,6 +56,8 @@ defmodule FlashwarsWeb.OrgHomeLive do
       )
       |> Enum.map(fn a ->
         items_count = length(a.items || [])
+        correct_count = Enum.count(a.items || [], &(&1.correct))
+        acc_pct = if items_count > 0, do: round(correct_count * 100 / items_count), else: 0
         details =
           case a.mode do
             :learn -> "Rounds: " <> Integer.to_string(rounds_from_items(items_count, 10))
@@ -79,7 +81,9 @@ defmodule FlashwarsWeb.OrgHomeLive do
           updated_at: a.updated_at || a.inserted_at,
           study_set: a.study_set,
           details: details,
-          href: href
+          href: href,
+          total: items_count,
+          accuracy: acc_pct
         }
       end)
 
@@ -113,7 +117,8 @@ defmodule FlashwarsWeb.OrgHomeLive do
           updated_at: s.inserted_at,
           study_set: set,
           details: rounds_count && ("Rounds: " <> Integer.to_string(rounds_count)),
-          href: href
+          href: href,
+          rounds: rounds_count
         }
       end)
 
@@ -329,87 +334,141 @@ defmodule FlashwarsWeb.OrgHomeLive do
                 <p class="text-sm text-base-content/60">No recent activity</p>
               </div>
 
-              <div :if={@recent_sessions != []} class="space-y-3">
+              <div :if={@recent_sessions != []} class="space-y-2">
                 <div
                   :for={s <- @recent_sessions}
-                  class="flex items-center gap-3 p-3 bg-base-200/50 rounded-lg"
+                  class="group flex items-center gap-3 p-3 rounded-lg border border-base-300/60 hover:bg-base-200/70 transition-colors"
                 >
-                  <div class="p-2 bg-primary/10 rounded-full">
-                    <.icon name="hero-academic-cap" class="size-4 text-primary" />
+                  <!-- Leading icon by mode -->
+                  <div class="p-2 rounded-lg bg-base-200/70">
+                    <.icon name={mode_icon(s.mode)} class="size-5 text-base-content/70" />
                   </div>
-              <div class="flex-1 min-w-0">
-                <button
-                  class="text-sm font-medium truncate hover:underline text-left"
-                  phx-click="show_recap"
-                  phx-value-kind={s[:type]}
-                  phx-value-id={s[:id]}
-                >
-                  {(s.study_set && s.study_set.name) || "a set"}
-                </button>
-                <p class="text-xs text-base-content/60">
-                  {Atom.to_string(s.mode) |> String.capitalize()} ·
-                  {Calendar.strftime(s.updated_at, "%b %d")} {s[:details] && (" · " <> s.details)}
-                </p>
+                  
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="text-sm font-medium truncate hover:underline text-left"
+                        phx-click="show_recap"
+                        phx-value-kind={s[:type]}
+                        phx-value-id={s[:id]}
+                      >
+                        {(s.study_set && s.study_set.name) || "a set"}
+                      </button>
+                      <span class={mode_badge_class(s.mode)}>{String.capitalize(Atom.to_string(s.mode))}</span>
+                    </div>
+                    <div class="text-xs text-base-content/60 mt-0.5 flex items-center gap-2">
+                      <span>{Calendar.strftime(s.updated_at, "%b %d")}</span>
+                      <span :if={s[:details]}>• {s.details}</span>
+                      <span :if={s[:accuracy]} class="ml-1">• Accuracy {s.accuracy}%</span>
+                      <span :if={s[:rounds]} class="ml-1">• Rounds {s.rounds}</span>
+                    </div>
+                  </div>
+
+                  <.link navigate={s.href} class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity">Open</.link>
+                </div>
               </div>
-            </div>
           </div>
         </div>
-      </div>
       
-      <div :if={@recap_open?} id="activity-recap" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="absolute inset-0 bg-black/60" phx-click="close_recap"></div>
-        <div class="relative z-10 w-full max-w-3xl mx-4">
-          <div class="card bg-base-100 shadow-xl">
+      <div
+        :if={@recap_open?}
+        id="activity-recap"
+        class="fixed inset-0 z-50"
+        phx-hook="OverlayDismiss"
+        data-push-event="close_recap"
+        data-on-escape="true"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="activity-recap-title"
+      >
+        <div
+          id="activity-recap-scrim"
+          class="absolute inset-0 bg-base-300/60 backdrop-blur-sm"
+          phx-hook="OverlayDismiss"
+          data-push-event="close_recap"
+        ></div>
+        <div class="relative z-10 w-full max-w-3xl mx-auto p-4 md:pt-24">
+          <div class="card bg-base-100 shadow-2xl border border-base-300/50 md:rounded-2xl">
+            <!-- Header -->
+            <div class="relative">
+              <div class="h-16 md:h-20 bg-base-200/80 rounded-t-2xl"></div>
+              <div class="absolute inset-0 flex items-center justify-between px-6">
+                <div class="flex items-center gap-3">
+                  <.icon name="hero-trophy" class="size-7 md:size-8 text-yellow-400" />
+                  <div>
+                    <div id="activity-recap-title" class="font-bold text-lg md:text-xl">{@recap_title}</div>
+                    <div class="text-xs opacity-70">{@recap_meta[:subtitle]}</div>
+                  </div>
+                </div>
+                <button class="btn btn-ghost" phx-click="close_recap" aria-label="Close recap">✕</button>
+              </div>
+            </div>
+
             <div class="card-body">
-              <div class="flex items-start justify-between">
+              <!-- Summary chips + accuracy progress -->
+              <div :if={@recap_meta[:summary]} class="space-y-3">
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-ghost"><.icon name="hero-queue-list" class="size-4" /><span class="ml-1">Total {@recap_meta[:summary][:total]}</span></span>
+                  <span class="badge badge-success"><.icon name="hero-check" class="size-4" /><span class="ml-1">Correct {@recap_meta[:summary][:correct]}</span></span>
+                  <span class="badge badge-info"><.icon name="hero-sparkles" class="size-4" /><span class="ml-1">Accuracy {@recap_meta[:summary][:accuracy]}%</span></span>
+                </div>
                 <div>
-                  <h3 class="card-title">{@recap_title}</h3>
-                  <p class="text-sm text-base-content/70">{@recap_meta[:subtitle]}</p>
-                </div>
-                <button class="btn btn-ghost" phx-click="close_recap">✕</button>
-              </div>
-
-              <div :if={@recap_meta[:summary]} class="mt-3 grid grid-cols-3 gap-4">
-                <div class="stat bg-base-200">
-                  <div class="stat-title">Total</div>
-                  <div class="stat-value text-lg">{@recap_meta[:summary][:total]}</div>
-                </div>
-                <div class="stat bg-base-200">
-                  <div class="stat-title">Correct</div>
-                  <div class="stat-value text-lg">{@recap_meta[:summary][:correct]}</div>
-                </div>
-                <div class="stat bg-base-200">
-                  <div class="stat-title">Accuracy</div>
-                  <div class="stat-value text-lg">{@recap_meta[:summary][:accuracy]}%</div>
+                  <div class="flex items-center justify-between text-sm opacity-70 mb-1">
+                    <div>Accuracy</div>
+                    <div class="tabular-nums">{@recap_meta[:summary][:accuracy]}%</div>
+                  </div>
+                  <.progress pct={@recap_meta[:summary][:accuracy] || 0.0} />
                 </div>
               </div>
 
-              <div class="mt-4">
-                <div class="overflow-x-auto">
-                  <table class="table table-zebra">
-                    <thead>
-                      <tr>
-                        <th class="w-10">#</th>
-                        <th>Item</th>
-                        <th class="w-24">Result</th>
-                        <th class="w-24">Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr :for={{row, idx} <- Enum.with_index(@recap_items, 1)}>
-                        <td class="tabular-nums">{idx}</td>
-                        <td class="truncate">{row[:label] || row[:name] || row[:term] || row[:user]}</td>
-                        <td>
-                          <span :if={row[:correct] == true} class="text-success">✓</span>
-                          <span :if={row[:correct] == false} class="text-error">✗</span>
-                          <span :if={is_nil(row[:correct])}>{row[:result] || "-"}</span>
-                        </td>
-                        <td class="tabular-nums">{row[:score] || "-"}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+              <!-- Actions -->
+              <div class="mt-3 flex flex-wrap gap-2">
+                <.link :if={@recap_meta[:open_href]} navigate={@recap_meta[:open_href]} class="btn btn-primary">Open</.link>
+                <button
+                  :if={@recap_meta[:study_set_id]}
+                  phx-click="review_struggling"
+                  phx-value-set-id={@recap_meta[:study_set_id]}
+                  class="btn btn-outline"
+                >
+                  Review Struggling
+                </button>
+                <button
+                  :if={@recap_meta[:study_set_id]}
+                  phx-click="practice_next"
+                  phx-value-set-id={@recap_meta[:study_set_id]}
+                  class="btn btn-ghost"
+                >
+                  Practice Next
+                </button>
               </div>
+
+              <!-- Details list -->
+              <details class="mt-4" {if length(@recap_items) <= 10, do: [open: true], else: []}>
+                <summary class="cursor-pointer text-sm opacity-80 list-none flex items-center gap-2">
+                  <.icon name="hero-list-bullet" class="size-4" />
+                  <span>Recent items ({length(@recap_items)})</span>
+                </summary>
+                <ul class="mt-2 max-h-[50vh] overflow-y-auto divide-y divide-base-300 rounded-lg border border-base-300/60">
+                  <li :for={{row, idx} <- Enum.with_index(@recap_items, 1)} class="p-3 flex items-center gap-3">
+                    <!-- Status icon -->
+                    <div class={"shrink-0 rounded-full p-1 " <> (if row[:correct] == true, do: "bg-success/20", else: (if row[:correct] == false, do: "bg-error/20", else: "bg-base-200"))}>
+                      <.icon name={if row[:correct] == true, do: "hero-check", else: (if row[:correct] == false, do: "hero-x-mark", else: "hero-question-mark-circle") } class={"size-4 "<> if(row[:correct] == true, do: "text-success", else: (if row[:correct] == false, do: "text-error", else: "text-base-content/60"))} />
+                    </div>
+                    
+                    <!-- Texts -->
+                    <div class="min-w-0 flex-1">
+                      <div class="font-medium truncate">{row[:label] || row[:name] || row[:term] || row[:user]}</div>
+                      <div :if={row[:definition]} class="text-xs opacity-70 truncate">{row[:definition]}</div>
+                    </div>
+
+                    <!-- Tags / score -->
+                    <div class="flex items-center gap-2">
+                      <span :if={row[:grade]} class={grade_badge_class(row[:grade])}>{row[:grade] |> to_string() |> String.capitalize()}</span>
+                      <span :if={row[:score]} class="badge badge-ghost">Score {row[:score]}</span>
+                    </div>
+                  </li>
+                </ul>
+              </details>
             </div>
           </div>
         </div>
@@ -419,6 +478,28 @@ defmodule FlashwarsWeb.OrgHomeLive do
     </Layouts.app>
     """
   end
+
+  # ========================================
+  # UI helpers
+  # ========================================
+
+  defp mode_icon(:learn), do: "hero-academic-cap"
+  defp mode_icon(:flashcards), do: "hero-rectangle-stack"
+  defp mode_icon(:test), do: "hero-pencil-square"
+  defp mode_icon(:game), do: "hero-bolt"
+  defp mode_icon(_), do: "hero-clock"
+
+  defp mode_badge_class(:learn), do: "badge badge-info badge-sm"
+  defp mode_badge_class(:flashcards), do: "badge badge-primary badge-sm"
+  defp mode_badge_class(:test), do: "badge badge-warning badge-sm"
+  defp mode_badge_class(:game), do: "badge badge-accent badge-sm"
+  defp mode_badge_class(_), do: "badge badge-ghost badge-sm"
+
+  defp grade_badge_class(:again), do: "badge badge-error"
+  defp grade_badge_class(:hard), do: "badge badge-warning"
+  defp grade_badge_class(:good), do: "badge badge-success"
+  defp grade_badge_class(:easy), do: "badge badge-success"
+  defp grade_badge_class(_), do: "badge badge-ghost"
 
   defp rounds_from_items(count, chunk) when is_integer(count) and is_integer(chunk) and chunk > 0 do
     if count <= 0, do: 0, else: div(count + chunk - 1, chunk)
@@ -444,7 +525,7 @@ defmodule FlashwarsWeb.OrgHomeLive do
     attempt =
       Flashwars.Learning.Attempt
       |> Ash.get!(attempt_id, actor: actor)
-      |> Ash.load!([:items, :study_set], actor: actor)
+      |> Ash.load!([:study_set, items: [:term]], actor: actor)
 
     total = length(attempt.items || [])
     correct = Enum.count(attempt.items || [], &(&1.correct))
@@ -455,18 +536,13 @@ defmodule FlashwarsWeb.OrgHomeLive do
       |> Enum.sort_by(&(&1.evaluated_at || &1.inserted_at), :desc)
       |> Enum.take(100)
       |> Enum.map(fn it ->
-        term_id =
-          cond do
-            is_map(it) and Map.has_key?(it, :term_id) -> Map.get(it, :term_id)
-            is_map(it) and Map.has_key?(it, "term_id") -> Map.get(it, "term_id")
-            function_exported?(it.__struct__, :__info__, 1) -> it.term_id
-            true -> nil
+        {term_text, definition} =
+          case it.term do
+            %Flashwars.Content.Term{term: t, definition: d} -> {t, d}
+            _ -> {nil, nil}
           end
 
-        correct = if is_map(it), do: Map.get(it, :correct) || Map.get(it, "correct"), else: it.correct
-        score = if is_map(it), do: Map.get(it, :score) || Map.get(it, "score"), else: it.score
-
-        %{label: term_id || "—", correct: correct, score: score}
+        %{label: term_text || "—", definition: definition, correct: it.correct, score: it.score, grade: it.grade, answer: it.answer}
       end)
 
     title =
@@ -477,9 +553,21 @@ defmodule FlashwarsWeb.OrgHomeLive do
         _ -> "Activity Recap"
       end
 
+    org_id = socket.assigns.current_org.id
+
+    open_href =
+      case attempt.mode do
+        :learn -> ~p"/orgs/#{org_id}/study_sets/#{attempt.study_set_id}/learn"
+        :flashcards -> ~p"/orgs/#{org_id}/study_sets/#{attempt.study_set_id}/flashcards"
+        :test -> ~p"/orgs/#{org_id}/study_sets/#{attempt.study_set_id}/test"
+        _ -> nil
+      end
+
     meta = %{
       subtitle: Calendar.strftime((attempt.updated_at || attempt.inserted_at), "%b %d, %Y"),
-      summary: %{total: total, correct: correct, accuracy: acc}
+      summary: %{total: total, correct: correct, accuracy: acc},
+      open_href: open_href,
+      study_set_id: attempt.study_set_id
     }
 
     {:noreply,
@@ -508,7 +596,9 @@ defmodule FlashwarsWeb.OrgHomeLive do
     title = "Game Recap: #{room.study_set && room.study_set.name}"
     meta = %{
       subtitle: Calendar.strftime((room.updated_at || room.inserted_at), "%b %d, %Y"),
-      summary: %{total: length(room.rounds || []), correct: "-", accuracy: "-"}
+      summary: %{total: length(room.rounds || []), correct: "-", accuracy: "-"},
+      open_href: ~p"/games/r/#{room.id}",
+      study_set_id: room.study_set_id
     }
 
     {:noreply,

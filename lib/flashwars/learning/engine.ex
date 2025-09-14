@@ -63,6 +63,58 @@ defmodule Flashwars.Learning.Engine do
         ]
 
   # Public API
+  @doc """
+  Generate a single game item based on allowed types.
+
+  Currently supports:
+  - "multiple_choice"
+  - "true_false"
+
+  Unknown types are ignored; falls back to multiple choice.
+  """
+  @spec generate_game_item(study_set_id(), keyword()) :: map()
+  def generate_game_item(study_set_id, opts \\ []) when is_binary(study_set_id) do
+    with_seeded_random(opts, fn ->
+      # normalize allowed types to strings
+      types =
+        opts
+        |> Keyword.get(:types, ["multiple_choice"])
+        |> Enum.map(fn t ->
+          cond do
+            is_atom(t) -> Atom.to_string(t)
+            is_binary(t) -> t
+            true -> "multiple_choice"
+          end
+        end)
+
+      # default to MCQ if none provided
+      allowed = if types == [], do: ["multiple_choice"], else: types
+
+      used_ids =
+        opts
+        |> Keyword.get(:exclude_term_ids, [])
+        |> MapSet.new()
+
+      terms = fetch_study_set_terms(study_set_id)
+
+      # pick a supported type
+      pick =
+        cond do
+          Enum.member?(allowed, "true_false") and Enum.random([true, false]) -> "true_false"
+          true -> "multiple_choice"
+        end
+
+      case pick do
+        "true_false" ->
+          {item, _} = build_true_false_item(terms, used_ids)
+          item
+
+        _ ->
+          {item, _} = build_multiple_choice_item_from_pool(terms, used_ids)
+          item
+      end
+    end)
+  end
 
   @doc """
   Generates a single multiple choice question from a study set.

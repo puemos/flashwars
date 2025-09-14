@@ -218,6 +218,20 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     {:noreply, assign(socket, learn_settings: settings)}
   end
 
+  def handle_event("apply_learn_preset", %{"preset" => preset}, socket) do
+    ls = socket.assigns.learn_settings
+    new_settings =
+      case preset do
+        "quick" -> %{ls | size: 6, smart: true, types: [:multiple_choice, :true_false], pair_count: 3}
+        "balanced" -> %{ls | size: 10, smart: true, types: [:multiple_choice, :true_false, :free_text, :matching], pair_count: 4}
+        "matching" -> %{ls | size: 8, smart: false, types: [:matching], pair_count: 5}
+        "free_text" -> %{ls | size: 8, smart: false, types: [:free_text], pair_count: 4}
+        _ -> ls
+      end
+
+    {:noreply, assign(socket, :learn_settings, new_settings)}
+  end
+
   @impl true
   def handle_event("start_next_round", _params, socket) do
     user = socket.assigns.current_user
@@ -661,9 +675,18 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     <!-- Settings panel (always available when toggled) -->
         <div :if={@show_settings?} id="learn-settings-card" class="card bg-base-200 mt-4">
           <div class="card-body">
-            <h4 class="font-semibold text-lg">Session Settings</h4>
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-lg">Session Settings</h4>
+              <div class="flex gap-2">
+                <button class="btn btn-xs" phx-click="apply_learn_preset" phx-value-preset="quick">Quick</button>
+                <button class="btn btn-xs" phx-click="apply_learn_preset" phx-value-preset="balanced">Balanced</button>
+                <button class="btn btn-xs" phx-click="apply_learn_preset" phx-value-preset="matching">Matching</button>
+                <button class="btn btn-xs" phx-click="apply_learn_preset" phx-value-preset="free_text">Free Text</button>
+              </div>
+            </div>
+
             <.form for={@settings_form} id="learn-settings" phx-change="settings_change">
-              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                 <div>
                   <.input
                     type="number"
@@ -672,7 +695,9 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
                     value={@learn_settings.size}
                     min="3"
                     max="50"
+                    step="1"
                   />
+                  <div class="text-xs opacity-70">How many questions per round</div>
                 </div>
                 <div>
                   <.input
@@ -682,65 +707,49 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
                     value={@learn_settings.pair_count}
                     min="2"
                     max="10"
+                    step="1"
                   />
+                  <div class="text-xs opacity-70">Only used for Matching</div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <label class="label"><span class="label-text">Smart scheduling</span></label>
-                  <input
-                    type="checkbox"
-                    name="settings[smart]"
-                    value="true"
-                    class="toggle"
-                    checked={@learn_settings.smart}
-                  />
-                </div>
-                <div>
-                  <div class="label"><span class="label-text">Question types</span></div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <label class="flex items-center gap-4 text-sm">
-                      <input
-                        type="checkbox"
-                        name="settings[types][multiple_choice]"
-                        checked={Enum.member?(@learn_settings.types, :multiple_choice)}
-                        class="checkbox checkbox-sm"
-                      />
-                      <span>Multiple choice</span>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="settings[types][true_false]"
-                        checked={Enum.member?(@learn_settings.types, :true_false)}
-                        class="checkbox checkbox-sm"
-                      />
-                      <span>True/False</span>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="settings[types][free_text]"
-                        checked={Enum.member?(@learn_settings.types, :free_text)}
-                        class="checkbox checkbox-sm"
-                      />
-                      <span>Free text</span>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="settings[types][matching]"
-                        checked={Enum.member?(@learn_settings.types, :matching)}
-                        class="checkbox checkbox-sm"
-                      />
-                      <span>Matching</span>
-                    </label>
+                <div class="md:col-span-3">
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="settings[smart]"
+                      id="learn-smart"
+                      checked={@learn_settings.smart}
+                      class="checkbox checkbox-sm"
+                    />
+                    <label for="learn-smart" class="text-sm">Smart selection (balanced mix)</label>
+                  </div>
+                  <div class="mt-3">
+                    <label class="block text-sm font-medium mb-1">Question Types</label>
+                    <div class="flex flex-wrap gap-3">
+                      <label class="badge gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="settings[types][multiple_choice]" checked={Enum.member?(@learn_settings.types, :multiple_choice)} class="checkbox checkbox-xs" />
+                        <span>Multiple choice</span>
+                      </label>
+                      <label class="badge gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="settings[types][true_false]" checked={Enum.member?(@learn_settings.types, :true_false)} class="checkbox checkbox-xs" />
+                        <span>True/False</span>
+                      </label>
+                      <label class="badge gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="settings[types][free_text]" checked={Enum.member?(@learn_settings.types, :free_text)} class="checkbox checkbox-xs" />
+                        <span>Free text</span>
+                      </label>
+                      <label class="badge gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="settings[types][matching]" checked={Enum.member?(@learn_settings.types, :matching)} class="checkbox checkbox-xs" />
+                        <span>Matching</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
             </.form>
-            <div class="mt-3">
-              <.button phx-click="restart" class="btn btn-sm">
-                Start New Session With Settings
-              </.button>
+
+            <div class="mt-3 flex items-center justify-between">
+              <div class="text-xs opacity-70">Tip: Use presets for a quick start, then tweak as needed</div>
+              <.button phx-click="restart" class="btn btn-sm">Start New Session With Settings</.button>
             </div>
           </div>
         </div>
@@ -758,6 +767,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
           items={@round_recap}
           continue_event="start_next_round"
           continue_label="Next Round"
+          variant={:inline}
           xp_earned={@recap_rewards && @recap_rewards.xp_earned}
           level={@recap_rewards && @recap_rewards.level}
           level_progress={@recap_rewards && @recap_rewards.level_progress}

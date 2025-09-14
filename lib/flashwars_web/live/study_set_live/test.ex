@@ -38,7 +38,10 @@ defmodule FlashwarsWeb.StudySetLive.Test do
         |> assign(:index, 0)
         |> assign(:score, 0)
         |> assign(:answered?, false)
-        |> assign(:correct?, nil)}
+        |> assign(:correct?, nil)
+        |> assign(:show_settings?, false)
+        |> assign(:test_settings, %{size: 8, smart: true, types: [:multiple_choice, :true_false], pair_count: 4})
+        |> assign(:test_settings_form, to_form(%{}, as: :test_settings))}
     else
       _ -> {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
     end
@@ -71,6 +74,49 @@ defmodule FlashwarsWeb.StudySetLive.Test do
      |> assign(:answered?, true)
      |> assign(:correct?, correct?)
      |> assign(:score, new_score)}
+  end
+
+  def handle_event("toggle_test_settings", _params, socket) do
+    {:noreply, assign(socket, :show_settings?, !socket.assigns.show_settings?)}
+  end
+
+  def handle_event("test_settings_change", %{"test_settings" => params}, socket) do
+    ts = parse_test_settings(params, socket.assigns.test_settings)
+    {:noreply, assign(socket, :test_settings, ts)}
+  end
+
+  def handle_event("apply_test_preset", %{"preset" => preset}, socket) do
+    ts = socket.assigns.test_settings
+    new =
+      case preset do
+        "quick" -> %{ts | size: 6, smart: true, types: [:multiple_choice, :true_false]}
+        "mc_only" -> %{ts | size: ts.size, smart: false, types: [:multiple_choice]}
+        "free_text" -> %{ts | size: 8, smart: false, types: [:free_text]}
+        _ -> ts
+      end
+    {:noreply, assign(socket, :test_settings, new)}
+  end
+
+  def handle_event("restart_test", _params, socket) do
+    actor = socket.assigns.current_user
+    set = socket.assigns.study_set
+    ts = socket.assigns.test_settings
+
+    items = Engine.generate_test(actor, set.id,
+      size: ts.size,
+      types: ts.types,
+      pair_count: ts.pair_count,
+      smart: ts.smart
+    )
+
+    {:noreply,
+     socket
+     |> assign(:items, items)
+     |> assign(:index, 0)
+     |> assign(:score, 0)
+     |> assign(:answered?, false)
+     |> assign(:correct?, nil)
+     |> put_flash(:info, "New test generated")}
   end
 
   def handle_event("next", _params, socket) do
@@ -106,6 +152,32 @@ defmodule FlashwarsWeb.StudySetLive.Test do
 
   # Minimal session state persisted via default_state(:test)
 
+  defp parse_test_settings(params, current) do
+    types_map = Map.get(params, "types", %{})
+
+    selected =
+      [:multiple_choice, :true_false, :free_text, :matching]
+      |> Enum.filter(fn t -> Map.get(types_map, Atom.to_string(t)) in ["true", "on", true] end)
+
+    size = parse_int(Map.get(params, "size"), current.size)
+    pair_count = parse_int(Map.get(params, "pair_count"), current.pair_count)
+    smart = Map.get(params, "smart") in ["true", "on", true]
+
+    types = if selected == [], do: current.types, else: selected
+
+    %{current | size: size, pair_count: pair_count, smart: smart, types: types}
+  end
+
+  defp parse_int(nil, fallback), do: fallback
+  defp parse_int(<<>>, fallback), do: fallback
+  defp parse_int(val, fallback) when is_binary(val) do
+    case Integer.parse(val) do
+      {i, ""} when i > 0 -> i
+      _ -> fallback
+    end
+  end
+  defp parse_int(val, _fallback) when is_integer(val), do: val
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} current_user={@current_user}>
@@ -113,9 +185,67 @@ defmodule FlashwarsWeb.StudySetLive.Test do
         Test: {@study_set.name}
         <:subtitle>Answer mixed questions</:subtitle>
         <:actions>
+          <.button phx-click="toggle_test_settings" class="btn btn-sm">Settings</.button>
           <.button phx-click="create_duel" variant="primary">Create Duel</.button>
         </:actions>
       </.header>
+
+      <!-- Test Settings -->
+      <div :if={@show_settings?} class="card bg-base-200 mb-4">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <h3 class="card-title">Test Settings</h3>
+            <div class="flex gap-2">
+              <button class="btn btn-xs" phx-click="apply_test_preset" phx-value-preset="quick">Quick</button>
+              <button class="btn btn-xs" phx-click="apply_test_preset" phx-value-preset="mc_only">MC Only</button>
+              <button class="btn btn-xs" phx-click="apply_test_preset" phx-value-preset="free_text">Free Text</button>
+            </div>
+          </div>
+          <.form for={@test_settings_form} id="test-settings-form" phx-change="test_settings_change">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+              <div>
+                <.input type="number" field={@test_settings_form[:size]} label="Questions" value={@test_settings.size} min="3" max="50" />
+                <div class="text-xs opacity-70">How many questions in the test</div>
+              </div>
+              <div>
+                <.input type="number" field={@test_settings_form[:pair_count]} label="Matching pairs" value={@test_settings.pair_count} min="2" max="10" />
+                <div class="text-xs opacity-70">Only used for Matching</div>
+              </div>
+              <div class="md:col-span-3">
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" name="test_settings[smart]" id="test-smart" checked={@test_settings.smart} class="checkbox checkbox-sm" />
+                  <label for="test-smart" class="text-sm">Smart selection (balanced mix)</label>
+                </div>
+                <div class="mt-3">
+                  <label class="block text-sm font-medium mb-1">Question Types</label>
+                  <div class="flex flex-wrap gap-3">
+                    <label class="badge gap-2 cursor-pointer select-none">
+                      <input type="checkbox" name="test_settings[types][multiple_choice]" checked={Enum.member?(@test_settings.types, :multiple_choice)} class="checkbox checkbox-xs" />
+                      <span>Multiple choice</span>
+                    </label>
+                    <label class="badge gap-2 cursor-pointer select-none">
+                      <input type="checkbox" name="test_settings[types][true_false]" checked={Enum.member?(@test_settings.types, :true_false)} class="checkbox checkbox-xs" />
+                      <span>True/False</span>
+                    </label>
+                    <label class="badge gap-2 cursor-pointer select-none">
+                      <input type="checkbox" name="test_settings[types][free_text]" checked={Enum.member?(@test_settings.types, :free_text)} class="checkbox checkbox-xs" />
+                      <span>Free text</span>
+                    </label>
+                    <label class="badge gap-2 cursor-pointer select-none">
+                      <input type="checkbox" name="test_settings[types][matching]" checked={Enum.member?(@test_settings.types, :matching)} class="checkbox checkbox-xs" />
+                      <span>Matching</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </.form>
+          <div class="mt-3 flex items-center justify-between">
+            <div class="text-xs opacity-70">Tip: Use presets for a quick start, then tweak as needed</div>
+            <.button phx-click="restart_test" class="btn btn-sm">Start New Test With Settings</.button>
+          </div>
+        </div>
+      </div>
 
       <div class="flex items-center justify-between mb-2">
         <div class="badge">Score: {@score}</div>
