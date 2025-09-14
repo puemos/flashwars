@@ -71,11 +71,25 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
 
   @impl true
   def handle_async(:init_session, {:ok, {:ok, session_state}}, socket) do
+    # Create an attempt to group this learn session's items
+    user = socket.assigns.current_user
+    set_id = get_study_set_id(socket.assigns)
+    now = DateTime.utc_now()
+
+    attempt =
+      Flashwars.Learning.create_attempt!(
+        %{mode: :learn, study_set_id: set_id, started_at: now},
+        actor: user
+      )
+
     socket =
       socket
+      |> assign(:attempt_id, attempt.id)
       |> assign(:session_state, session_state)
       |> sync_ui_with_session_state(session_state)
       |> assign_ui_state()
+
+    # Session persistence happens via heartbeat; Recent Activity uses Attempts
 
     {:noreply, socket}
   end
@@ -177,6 +191,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
            opts_from_settings(socket.assigns.learn_settings)
          ) do
       {:ok, session_state} ->
+        
         socket =
           socket
           |> assign(:session_state, session_state)
@@ -215,6 +230,8 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
            opts_from_settings(socket.assigns.learn_settings)
          ) do
       {:ok, new_state} ->
+        :ok
+
         {:noreply,
          socket
          |> assign(:session_state, new_state)
@@ -339,6 +356,8 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
       |> assign(:correct?, correct?)
       |> assign(:reveal, %{selected_index: selected_idx, correct_index: item.answer_index})
 
+    # Session persistence occurs via heartbeat
+
     # Auto-advance for correct answers
     if correct? and is_nil(socket.assigns[:last_wrong_index]) do
       Process.send_after(
@@ -364,6 +383,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     |> assign(:answered?, true)
     |> assign(:correct?, correct?)
     |> assign(:reveal, %{user_text: user_text, correct_text: correct_text})
+    
   end
 
   defp handle_matching_answer(socket, item, correct?, user_pairs, correct_pairs) do
@@ -379,6 +399,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
     |> assign(:answered?, true)
     |> assign(:correct?, correct?)
     |> assign(:reveal, %{user_pairs: user_pairs, correct_pairs: correct_pairs})
+    
   end
 
   # ========================================
@@ -486,6 +507,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
         grade,
         answer: answer_text,
         queue_type: :review,
+        attempt_id: socket.assigns[:attempt_id],
         timeout: @review_timeout
       )
     end)
@@ -506,6 +528,7 @@ defmodule FlashwarsWeb.StudySetLive.Learn do
             grade,
             answer: answer_text,
             queue_type: :review,
+            attempt_id: socket.assigns[:attempt_id],
             timeout: @review_timeout
           )
         end)

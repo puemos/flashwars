@@ -13,6 +13,14 @@ defmodule FlashwarsWeb.StudySetLive.Test do
     actor = socket.assigns.current_user
 
     with {:ok, set} <- Content.get_study_set_by_id(set_id, actor: actor) do
+      # Group this test session under a single attempt
+      now = DateTime.utc_now()
+      attempt =
+        Learning.create_attempt!(
+          %{mode: :test, study_set_id: set.id, started_at: now},
+          actor: actor
+        )
+
       items =
         Engine.generate_test(actor, set.id,
           size: 8,
@@ -25,11 +33,12 @@ defmodule FlashwarsWeb.StudySetLive.Test do
        |> assign(:page_title, "Test · #{set.name}")
        |> assign_new(:current_scope, fn -> %{org_id: socket.assigns.current_org.id} end)
        |> assign(:study_set, set)
-       |> assign(:items, items)
-       |> assign(:index, 0)
-       |> assign(:score, 0)
-       |> assign(:answered?, false)
-       |> assign(:correct?, nil)}
+       |> assign(:attempt_id, attempt.id)
+        |> assign(:items, items)
+        |> assign(:index, 0)
+        |> assign(:score, 0)
+        |> assign(:answered?, false)
+        |> assign(:correct?, nil)}
     else
       _ -> {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}
     end
@@ -49,19 +58,25 @@ defmodule FlashwarsWeb.StudySetLive.Test do
         {:ok, _} =
           Learning.review(socket.assigns.current_user, item.term_id, grade,
             answer: answer_text,
-            queue_type: :review
+            queue_type: :review,
+            attempt_id: socket.assigns[:attempt_id]
           )
       end
+
+    # Update score locally
+    new_score = socket.assigns.score + if(correct?, do: 10, else: 0)
 
     {:noreply,
      socket
      |> assign(:answered?, true)
      |> assign(:correct?, correct?)
-     |> assign(:score, socket.assigns.score + if(correct?, do: 10, else: 0))}
+     |> assign(:score, new_score)}
   end
 
   def handle_event("next", _params, socket) do
     new_index = socket.assigns.index + 1
+
+    # Advance to next question
 
     {:noreply,
      socket
@@ -88,6 +103,8 @@ defmodule FlashwarsWeb.StudySetLive.Test do
   defp current_item(socket) do
     Enum.at(socket.assigns.items, socket.assigns.index)
   end
+
+  # Minimal session state persisted via default_state(:test)
 
   def render(assigns) do
     ~H"""

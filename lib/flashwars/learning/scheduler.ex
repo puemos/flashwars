@@ -48,7 +48,7 @@ defmodule Flashwars.Learning.Scheduler do
     lapses = Map.get(card, :lapses) || 0
     relearn_stage = Map.get(card, :relearn_stage) || 0
 
-    dt_days = diff_days(t_last, now)
+    dt_days = max(diff_days(t_last, now), 0.0)
     r_now = :math.exp(-dt_days / max(s, @s_min))
 
     {success, g} =
@@ -128,7 +128,7 @@ defmodule Flashwars.Learning.Scheduler do
     ranked_due =
       Enum.map(due_states, fn cs ->
         s = max(cs.stability_days || 0.3, @s_min)
-        dt_days = diff_days(cs.t_last || now, now)
+        dt_days = max(diff_days(cs.t_last || now, now), 0.0)
         r_now = :math.exp(-dt_days / s)
         {r_now, cs}
       end)

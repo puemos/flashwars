@@ -306,10 +306,18 @@ defmodule Flashwars.Learning.Engine do
   defp select_scheduled_term(user, study_set_id, exclude_ids) do
     user
     |> Scheduler.build_daily_queue(study_set_id, @default_learn_size)
-    |> Enum.find(&(not MapSet.member?(exclude_ids, &1.term_id)))
+    |> Enum.find(fn entry ->
+      tid = extract_term_id(entry)
+      tid && not MapSet.member?(exclude_ids, tid)
+    end)
     |> case do
-      %{term_id: term_id} ->
+      # TermState or mastery summary map
+      %{term_id: term_id} when is_binary(term_id) or is_integer(term_id) ->
         term = Content.get_term_by_id!(term_id, authorize?: false)
+        {:ok, term}
+
+      # Direct Term struct
+      %Term{} = term ->
         {:ok, term}
 
       nil ->

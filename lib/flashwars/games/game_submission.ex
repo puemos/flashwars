@@ -73,12 +73,13 @@ defmodule Flashwars.Games.GameSubmission do
       validate present(:organization_id)
 
       # Business rule: scoring
-      # If no explicit score provided, assign 2 points to the first correct
-      # submission for a round; otherwise 0.
+      # If no explicit score provided, award points to the first correct submission
+      # based on response time. Subsequent correct submissions for the same round get 0.
       change fn changeset, _ctx ->
         score = Ash.Changeset.get_attribute(changeset, :score)
         correct? = Ash.Changeset.get_attribute(changeset, :correct)
         round_id = Ash.Changeset.get_attribute(changeset, :game_round_id)
+        submitted_at = Ash.Changeset.get_attribute(changeset, :submitted_at) || DateTime.utc_now()
 
         cond do
           not is_nil(score) ->
@@ -95,11 +96,34 @@ defmodule Flashwars.Games.GameSubmission do
                 _ -> true
               end
 
-            Ash.Changeset.change_attribute(
-              changeset,
-              :score,
-              if(already_correct?, do: 0, else: 2)
-            )
+            if already_correct? do
+              Ash.Changeset.change_attribute(changeset, :score, 0)
+            else
+              # Compute time-based score using round start and config time limit
+              ms_taken =
+                case Ash.get(Flashwars.Games.GameRound, round_id, authorize?: false) do
+                  {:ok, round} ->
+                    start = round.started_at || submitted_at
+                    seconds = max(0, DateTime.diff(submitted_at, start, :second))
+                    seconds * 1000
+                  _ ->
+                    0
+                end
+
+              # Load time limit from room config if available
+              limit_ms =
+                case Ash.get(Flashwars.Games.GameRound, round_id, authorize?: false) do
+                  {:ok, round} ->
+                    case Ash.get(Flashwars.Games.GameRoom, round.game_room_id, authorize?: false) do
+                      {:ok, room} -> room.config && room.config.time_limit_ms
+                      _ -> nil
+                    end
+                  _ -> nil
+                end
+
+              points = Flashwars.Games.Scoring.score(true, ms_taken, limit_ms: limit_ms || 10_000)
+              Ash.Changeset.change_attribute(changeset, :score, points)
+            end
 
           true ->
             Ash.Changeset.change_attribute(changeset, :score, 0)
@@ -148,7 +172,9 @@ defmodule Flashwars.Games.GameSubmission do
     uuid_primary_key :id
     attribute :answer, :string
     attribute :correct, :boolean, default: false
-    attribute :score, :integer, default: 0
+    # No default so we can detect when a client did not provide a score
+    # and compute it in the create change.
+    attribute :score, :integer
     attribute :submitted_at, :utc_datetime
     attribute :organization_id, :uuid
     create_timestamp :inserted_at

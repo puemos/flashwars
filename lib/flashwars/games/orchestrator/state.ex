@@ -66,7 +66,7 @@ defmodule Flashwars.Games.Orchestrator.State do
     {%{s | mode: :intermission}, effects}
   end
 
-  def reduce(%__MODULE__{current_round: %{id: rid}} = s, {:time_up, rid}) do
+  def reduce(%__MODULE__{current_round: %{id: rid}, mode: :question} = s, {:time_up, rid}) do
     qd = question_data(s.current_round)
     answer_index = qd[:answer_index] || qd["answer_index"] || 0
 

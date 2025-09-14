@@ -62,7 +62,7 @@ defmodule Flashwars.Games.Orchestrator do
   @impl true
   def init(%{room_id: room_id}) do
     _ = Events.subscribe(room_id)
-    {:ok, %{st: State.new(room_id)}}
+    {:ok, %{st: State.new(room_id), timers: %{time_up: nil, intermission: nil}}}
   end
 
   @impl true
@@ -70,38 +70,33 @@ defmodule Flashwars.Games.Orchestrator do
     {st2, effects} =
       State.reduce(st, {:begin, strategy, %{time_limit_ms: tl, intermission_ms: im}})
 
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   @impl true
   def handle_cast(:force_next, %{st: st} = s) do
     {st2, effects} = State.reduce(st, :force_next)
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   @impl true
   def handle_info({:time_up, rid}, %{st: st} = s) do
     {st2, effects} = State.reduce(st, {:time_up, rid})
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   # React to LiveView broadcasts
   @impl true
   def handle_info(%{event: :round_closed, round_id: rid}, %{st: st} = s) do
     {st2, effects} = State.reduce(st, {:round_closed, rid})
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   def handle_info(%{event: :ready}, s), do: {:noreply, s}
 
   def handle_info(%{event: :new_round, round: round}, %{st: st} = s) do
     {st2, effects} = State.reduce(st, {:new_round, round})
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   def handle_info(%{event: :game_over}, %{st: st} = s),
@@ -110,19 +105,50 @@ defmodule Flashwars.Games.Orchestrator do
   @impl true
   def handle_info(:intermission_over, %{st: st} = s) do
     {st2, effects} = State.reduce(st, :intermission_over)
-    interpret_effects(effects, st2.room_id)
-    {:noreply, %{s | st: st2}}
+    {:noreply, apply_effects(%{s | st: st2}, effects)}
   end
 
   @impl true
   def handle_info(_msg, s), do: {:noreply, s}
 
-  # Effect interpreter
-  defp interpret_effects(effects, room_id) when is_list(effects) do
-    Enum.each(effects, fn
-      {:broadcast, event} -> Events.broadcast(room_id, event)
-      {:schedule_in, ms, msg} -> Process.send_after(self(), msg, ms)
-      _ -> :ok
-    end)
+  # Effect interpreter with robust timer management. Ensures only one active timer per kind.
+  defp apply_effects(%{st: %{room_id: room_id}} = s, effects) when is_list(effects) do
+    timers = s[:timers] || %{time_up: nil, intermission: nil}
+
+    new_timers =
+      Enum.reduce(effects, timers, fn
+        {:broadcast, event}, acc ->
+          Events.broadcast(room_id, event)
+          acc
+
+        {:schedule_in, ms, msg}, acc when is_integer(ms) and ms > 0 ->
+          case msg do
+            {:time_up, _rid} ->
+              cancel_timer(acc.time_up)
+              ref = Process.send_after(self(), msg, ms)
+              %{acc | time_up: ref}
+
+            :intermission_over ->
+              cancel_timer(acc.intermission)
+              ref = Process.send_after(self(), msg, ms)
+              %{acc | intermission: ref}
+
+            _ ->
+              _ = Process.send_after(self(), msg, ms)
+              acc
+          end
+
+        _other, acc ->
+          acc
+      end)
+
+    %{s | timers: new_timers}
+  end
+
+  defp cancel_timer(nil), do: :ok
+  defp cancel_timer(ref) when is_reference(ref) do
+    # best-effort cancel; avoid sending message if already in queue
+    _ = Process.cancel_timer(ref, async: true, info: false)
+    :ok
   end
 end

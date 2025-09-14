@@ -16,19 +16,27 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
     actor = socket.assigns.current_user
 
     with {:ok, set} <- Content.get_study_set_by_id(set_id, actor: actor) do
+      # Group this flashcards session under a single attempt
+      now = DateTime.utc_now()
+      attempt =
+        Learning.create_attempt!(
+          %{mode: :flashcards, study_set_id: set.id, started_at: now},
+          actor: actor
+        )
       # Generate initial small batch of flashcards
       cards = generate_initial_cards(actor, set.id, 10)
 
       {:ok,
        socket
-       |> assign(:page_title, "Flashcards · #{set.name}")
-       |> assign_new(:current_scope, fn -> %{org_id: socket.assigns.current_org.id} end)
-       |> assign(:study_set, set)
-       |> assign(:exclude_term_ids, MapSet.new())
-       |> assign(:cards, cards)
-       |> assign(:cards_completed, 0)
-       |> assign(:round_number, 1)
-       |> assign(:round_terms, [])
+        |> assign(:page_title, "Flashcards · #{set.name}")
+        |> assign_new(:current_scope, fn -> %{org_id: socket.assigns.current_org.id} end)
+        |> assign(:study_set, set)
+        |> assign(:attempt_id, attempt.id)
+        |> assign(:exclude_term_ids, MapSet.new())
+        |> assign(:cards, cards)
+        |> assign(:cards_completed, 0)
+        |> assign(:round_number, 1)
+        |> assign(:round_terms, [])
        |> assign(:show_recap?, false)
        |> assign(:round_recap, [])
        |> assign(:recap_rewards, nil)}
@@ -53,10 +61,17 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
       end
 
     # Process the grade
+    # Attach to this flashcards attempt
     _ =
       if card.term_id do
         {:ok, _} =
-          Learning.review(socket.assigns.current_user, card.term_id, grade, queue_type: :review)
+          Learning.review(
+            socket.assigns.current_user,
+            card.term_id,
+            grade,
+            queue_type: :review,
+            attempt_id: socket.assigns[:attempt_id]
+          )
       end
 
     # Update exclude list
@@ -258,6 +273,8 @@ defmodule FlashwarsWeb.StudySetLive.Flashcards do
     </Layouts.app>
     """
   end
+
+  # Minimal session state persisted via default_state(:flashcards)
 
   # Helper functions
 

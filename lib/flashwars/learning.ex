@@ -5,6 +5,7 @@ defmodule Flashwars.Learning do
   resources do
     resource Flashwars.Learning.Attempt do
       define :create_attempt, action: :create
+      define :list_attempts, action: :read
     end
 
     resource Flashwars.Learning.AttemptItem do

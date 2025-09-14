@@ -105,13 +105,26 @@ defmodule Flashwars.Games.GameRoom do
         key = Ash.Changeset.get_argument(changeset, :player_key)
         info = Ash.Changeset.get_argument(changeset, :player_info)
 
+        cfg = changeset.data.config || %Flashwars.Games.GameRoomConfig{}
+        players = cfg.players || %{}
+        existing = Map.get(players, key)
+
+        # resolve nickname: prefer provided, fallback to existing
         nickname =
           case info do
             %Flashwars.Games.PlayerInfo{nickname: n} -> n
             %{} = m -> m[:nickname] || m["nickname"]
           end
 
-        trimmed = (is_binary(nickname) && String.trim(nickname)) || nil
+        trimmed =
+          case (is_binary(nickname) && String.trim(nickname)) || nil do
+            nil ->
+              case existing do
+                %Flashwars.Games.PlayerInfo{nickname: n} -> n
+                _ -> nil
+              end
+            v -> v
+          end
 
         cond do
           is_nil(trimmed) or byte_size(trimmed) < 1 or byte_size(trimmed) > 24 ->
@@ -121,12 +134,10 @@ defmodule Flashwars.Games.GameRoom do
             )
 
           true ->
-            cfg = changeset.data.config || %Flashwars.Games.GameRoomConfig{}
-            players = cfg.players || %{}
-
             new_info =
               case info do
                 %Flashwars.Games.PlayerInfo{} = s ->
+                  # Keep other fields, override nickname
                   %{s | nickname: trimmed}
 
                 %{} = m ->
@@ -134,15 +145,25 @@ defmodule Flashwars.Games.GameRoom do
                     nickname: trimmed,
                     user_id: m[:user_id] || m["user_id"],
                     guest_id: m[:guest_id] || m["guest_id"],
+                    score: m[:score] || m["score"] ||
+                      (case existing do
+                         %Flashwars.Games.PlayerInfo{score: sc} -> sc
+                         _ -> 0
+                       end),
                     joined_at: m[:joined_at] || m["joined_at"] || DateTime.utc_now(),
                     last_seen: m[:last_seen] || m["last_seen"] || DateTime.utc_now()
                   }
               end
 
-            new_cfg = %Flashwars.Games.GameRoomConfig{
-              cfg
-              | players: Map.put(players, key, new_info)
-            }
+            # Merge score increment if info.score is provided as delta
+            new_info =
+              case {existing, info} do
+                {%Flashwars.Games.PlayerInfo{score: sc} = ex, %Flashwars.Games.PlayerInfo{score: inc}} when is_integer(inc) ->
+                  %{ex | nickname: trimmed, score: sc + inc, last_seen: DateTime.utc_now()}
+                {_ex, _} -> new_info
+              end
+
+            new_cfg = %Flashwars.Games.GameRoomConfig{cfg | players: Map.put(players, key, new_info)}
 
             Ash.Changeset.change_attribute(changeset, :config, new_cfg)
         end

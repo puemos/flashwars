@@ -33,7 +33,7 @@ defmodule Flashwars.Games.Players do
     %{
       user_id: normalize_user_id(pi.user_id),
       name: pi.nickname,
-      score: 0
+      score: (pi.score || 0)
     }
   end
 
@@ -45,7 +45,7 @@ defmodule Flashwars.Games.Players do
       %{
         user_id: normalize_user_id(uid),
         name: nickname,
-        score: 0
+        score: (m[:score] || m["score"] || 0)
       }
     else
       nil
@@ -63,4 +63,3 @@ defmodule Flashwars.Games.Players do
   end
   defp normalize_user_id(_), do: nil
 end
-

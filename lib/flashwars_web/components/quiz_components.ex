@@ -232,6 +232,7 @@ defmodule FlashwarsWeb.QuizComponents do
 
   def scoreboard(assigns) do
     ~H"""
+    <div data-test-id="scoreboard">
     <ul>
       <li
         :for={{entry, idx} <- Enum.with_index(@entries, 1)}
@@ -253,6 +254,7 @@ defmodule FlashwarsWeb.QuizComponents do
         </span>
       </li>
     </ul>
+    </div>
     """
   end
 

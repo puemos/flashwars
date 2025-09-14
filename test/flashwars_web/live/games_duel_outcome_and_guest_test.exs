@@ -144,7 +144,7 @@ defmodule FlashwarsWeb.GamesDuelOutcomeAndGuestTest do
     assert render(host_lv) =~ "NO WINNER"
   end
 
-  test "anonymous guest via link can answer and see overlay; scoreboard hidden", %{
+  test "anonymous guest via link can answer and see overlay; scoreboard visible to all", %{
     conn: conn,
     host: host,
     set: set
@@ -166,7 +166,7 @@ defmodule FlashwarsWeb.GamesDuelOutcomeAndGuestTest do
     _ = anon_lv |> element("#duel-round button[phx-value-index='0']") |> render_click()
 
     :ok = wait_for(fn -> has_element?(anon_lv, "#result-overlay") end)
-    # Scoreboard prompt visible to anonymous users
-    assert render(anon_lv) =~ "Sign in to play and see your score"
+    # Scoreboard visible to anonymous users
+    assert has_element?(anon_lv, "[data-test-id='scoreboard']")
   end
 end
