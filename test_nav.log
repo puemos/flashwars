@@ -1,195 +1,0 @@
-Getting extensions in current project...
-Running setup for AshPostgres.DataLayer...
-Running ExUnit with seed: 989078, max_cases: 1
-
-
-Flashwars.Games.OrchestratorStateTest [test/games/orchestrator_state_test.exs]
-  * test intermission_over broadcasts and returns to idle [L#47]  * test intermission_over broadcasts and returns to idle (0.00ms) [L#47]
-  * test time_up broadcasts round_closed and schedules intermission [L#24]  * test time_up broadcasts round_closed and schedules intermission (0.00ms) [L#24]
-  * test round_closed schedules intermission once [L#34]  * test round_closed schedules intermission once (0.00ms) [L#34]
-  * test begin sets strategy and timers [L#6]  * test begin sets strategy and timers (0.00ms) [L#6]
-  * test new_round schedules time_up when time_limit_ms set [L#15]  * test new_round schedules time_up when time_limit_ms set (0.00ms) [L#15]
-
-Flashwars.Org.ProvisioningTest [test/org/provisioning_test.exs]
-  * test ensure_default_org_for creates org and admin membership for new user [L#9]  * test ensure_default_org_for creates org and admin membership for new user (203.1ms) [L#9]
-  * test ensure_default_org_for is idempotent if membership exists [L#27]  * test ensure_default_org_for is idempotent if membership exists (8.4ms) [L#27]
-
-FlashwarsWeb.FlashcardsRoundRecapTest [test/flashwars_web/live/flashcards_round_recap_test.exs]
-  * test shows recap after a round of swipes [L#10]  * test shows recap after a round of swipes (291.1ms) [L#10]
-
-FlashwarsWeb.LearnRoundMatchingRecapTest [test/flashwars_web/live/learn_round_matching_recap_test.exs]
-  * test recap includes terms from matching items [L#12]  * test recap includes terms from matching items (86.5ms) [L#12]
-
-FlashwarsWeb.GamesDuelGuestNameTest [test/flashwars_web/live/games_duel_guest_name_test.exs]
-  * test anonymous can set name and it reflects in input [L#9]  * test anonymous can set name and it reflects in input (194.1ms) [L#9]
-
-FlashwarsWeb.LearnRoundRecapTest [test/flashwars_web/live/learn_round_recap_test.exs]
-  * test shows recap at end of round and waits for next round [L#11]  * test shows recap at end of round and waits for next round (72.6ms) [L#11]
-
-FlashwarsWeb.OrgLiveTest [test/flashwars_web/live/org_live_test.exs]
-  * test org selector lists orgs and links [L#15]  * test org selector lists orgs and links (66.5ms) [L#15]
-  * test org home renders for member [L#25]  * test org home renders for member (29.8ms) [L#25]
-
-Flashwars.UseCases.LearningAndGamesFlowTest [test/use_cases/learning_and_games_flow_test.exs]
-  * test learning flow (public study set) anonymous can read terms of a public study set [L#19]  * test learning flow (public study set) anonymous can read terms of a public study set (20.0ms) [L#19]
-  * test games flow (link shared room + participant submissions) participant can read all submissions and rounds load by token [L#73]  * test games flow (link shared room + participant submissions) participant can read all submissions and rounds load by token (22.6ms) [L#73]
-
-Flashwars.Learning.SessionManagerTest [test/learning/session_manager_test.exs]
-  * test retrying incorrect answers incorrect retry requeues item until answered correctly [L#13]  * test retrying incorrect answers incorrect retry requeues item until answered correctly (0.4ms) [L#13]
-
-Flashwars.Games.ScoreboardTest [test/games/scoreboard_test.exs]
-  * test merge maintains user ordering by score [L#33]  * test merge maintains user ordering by score (0.00ms) [L#33]
-  * test merge skips duplicate names [L#6]  * test merge skips duplicate names (0.00ms) [L#6]
-  * test merge guests-only yields player entries [L#25]  * test merge guests-only yields player entries (0.00ms) [L#25]
-
-Flashwars.Learning.MasteryTest [test/learning/mastery_test.exs]
-  * test mastery_for_set/3 classifies mastered, struggling, and unseen terms [L#25]  * test mastery_for_set/3 classifies mastered, struggling, and unseen terms (38.4ms) [L#25]
-
-FlashwarsWeb.StudySetTokenLiveTest [test/flashwars_web/live/study_set_token_live_test.exs]
-  * test anonymous can view link-shared set with terms [L#9]  * test anonymous can view link-shared set with terms (18.9ms) [L#9]
-
-Flashwars.UseCases.AttemptFlowTest [test/use_cases/attempt_flow_test.exs]
-  * test student creates attempt, items, and leaderboard upsert [L#19]  * test student creates attempt, items, and leaderboard upsert (28.1ms) [L#19]
-
-FlashwarsWeb.LearnLiveTest [test/flashwars_web/live/learn_live_test.exs]
-  * test requeues incorrect answers in learn state [L#11]  * test requeues incorrect answers in learn state (66.9ms) [L#11]
-
-FlashwarsWeb.GamesDuelOutcomeAndGuestTest [test/flashwars_web/live/games_duel_outcome_and_guest_test.exs]
-  * test anonymous guest via link can answer and see overlay; scoreboard visible to all [L#147]  * test anonymous guest via link can answer and see overlay; scoreboard visible to all (77.7ms) [L#147]
-
-  1) test anonymous guest via link can answer and see overlay; scoreboard visible to all (FlashwarsWeb.GamesDuelOutcomeAndGuestTest)
-     test/flashwars_web/live/games_duel_outcome_and_guest_test.exs:147
-     Expected truthy, got false
-     code: assert has_element?(anon_lv, "[data-test-id='scoreboard']")
-     arguments:
-
-         # 1
-         #Phoenix.LiveViewTest.View<
-           id: "phx-GGCNCpe2dRYuvRWh",
-           module: FlashwarsWeb.GameRoomLive.Duel,
-           pid: #PID<0.814.0>,
-           endpoint: FlashwarsWeb.Endpoint,
-           ...
-         >
-
-         # 2
-         "[data-test-id='scoreboard']"
-
-     stacktrace:
-       test/flashwars_web/live/games_duel_outcome_and_guest_test.exs:170: (test)
-
-  * test correct answer shows YOU WIN for answerer, YOU LOSE for others [L#57]  * test correct answer shows YOU WIN for answerer, YOU LOSE for others (90.6ms) [L#57]
-  * test first wrong answer results in NO WINNER (draw) for all viewers [L#108]  * test first wrong answer results in NO WINNER (draw) for all viewers (72.6ms) [L#108]
-
-FlashwarsWeb.ErrorHTMLTest [test/flashwars_web/controllers/error_html_test.exs]
-  * test renders 404.html [L#7]  * test renders 404.html (0.6ms) [L#7]
-  * test renders 500.html [L#11]  * test renders 500.html (0.5ms) [L#11]
-
-FlashwarsWeb.GamesDuelLiveTest [test/flashwars_web/live/games_duel_live_test.exs]
-  * test default playful names are unique and used in lobby and final scores [L#93]  * test default playful names are unique and used in lobby and final scores (75.1ms) [L#93]
-  * test create duel from study set listing and start game [L#14]15:02:11.619 request_id=GGCNCqeYoQf6qnkAAATl [error] No term available for flashcard
-15:02:11.658 [error] No term available for flashcard
-  * test create duel from study set listing and start game (137.6ms) [L#14]
-  * test host can configure settings and copy link when link-only [L#52]15:02:11.753 request_id=GGCNCq-RGbUAalQAABlB [error] No term available for flashcard
-15:02:11.791 [error] No term available for flashcard
-  * test host can configure settings and copy link when link-only (131.7ms) [L#52]
-
-Flashwars.UseCases.GamesMultiRoundFlowTest [test/use_cases/games_multi_round_flow_test.exs]
-  * test games multi-round flow players submit across rounds; participants can read all submissions in their room [L#21]  * test games multi-round flow players submit across rounds; participants can read all submissions in their room (71.0ms) [L#21]
-
-FlashwarsWeb.GamesDuelLinkAccessTest [test/flashwars_web/live/games_duel_link_access_test.exs]
-  * test user from other org joins via link token and both can play rounds [L#30]  * test user from other org joins via link token and both can play rounds (91.7ms) [L#30]
-
-FlashwarsWeb.LearnSettingsUITest [test/flashwars_web/live/learn_live_test.exs]
-  * test settings panel toggles and renders [L#103]  * test settings panel toggles and renders (112.7ms) [L#103]
-
-FlashwarsWeb.StudySetLiveTest [test/flashwars_web/live/study_set_live_test.exs]
-  * test edit, delete, and reorder terms; bulk add; privacy link; expertise badges [L#121]15:02:12.148 request_id=GGCNCsfsptBVb8YAAAfk [error] No term available for flashcard
-15:02:12.173 [error] No term available for flashcard
-  * test edit, delete, and reorder terms; bulk add; privacy link; expertise badges (117.7ms) [L#121]
-  * test header shows privacy and term count [L#69]15:02:12.264 request_id=GGCNCs7vklPCBhAAAAkE [error] No term available for flashcard
-15:02:12.288 [error] No term available for flashcard
-  * test header shows privacy and term count (67.7ms) [L#69]
-  * test privacy change is saved [L#95]15:02:12.323 request_id=GGCNCtLKJAPlRqcAAAnE [error] No term available for flashcard
-15:02:12.339 [error] No term available for flashcard
-  * test privacy change is saved (64.6ms) [L#95]
-  * test inline edit updates a term [L#202]15:02:12.405 request_id=GGCNCtcZkTnuYeMAAApk [error] No term available for flashcard
-15:02:12.449 [error] No term available for flashcard
-  * test inline edit updates a term (121.2ms) [L#202]
-  * test create study set navigates to terms [L#19]  * test create study set navigates to terms (23.1ms) [L#19]
-  * test add term shows in the list [L#41]15:02:12.539 request_id=GGCNCt9J_h-InP0AAByh [error] No term available for flashcard
-15:02:12.560 [error] No term available for flashcard
-  * test add term shows in the list (72.0ms) [L#41]
-
-FlashwarsWeb.TestModeLiveTest [test/flashwars_web/live/test_mode_live_test.exs]
-  * test test mode answers and advances [L#16]  * test test mode answers and advances (215.6ms) [L#16]
-
-FlashwarsWeb.ErrorJSONTest [test/flashwars_web/controllers/error_json_test.exs]
-  * test renders 404 [L#4]  * test renders 404 (1.0ms) [L#4]
-  * test renders 500 [L#8]  * test renders 500 (0.7ms) [L#8]
-
-Flashwars.Learning.SchedulerTest [test/learning/scheduler_test.exs]
-  * test schedule_after_review + review logging success and failure update term state and log AttemptItem metadata [L#18]  * test schedule_after_review + review logging success and failure update term state and log AttemptItem metadata (67.0ms) [L#18]
-  * test daily queue includes unseen when no due items [L#81]  * test daily queue includes unseen when no due items (41.8ms) [L#81]
-
-Flashwars.Learning.ModeSeedTest [test/learning/mode_seed_test.exs]
-  * test deterministic test generation seed produces stable test [L#63]  * test deterministic test generation seed produces stable test (162.3ms) [L#63]
-  * test mode constraints session rejects match mode [L#16]  * test mode constraints session rejects match mode (186.7ms) [L#16]
-  * test mode constraints assignment rejects match mode [L#34]  * test mode constraints assignment rejects match mode (203.6ms) [L#34]
-
-Flashwars.Content.FolderTest [test/content/folder_test.exs]
-  * test org admins can create folders in their org [L#8]  * test org admins can create folders in their org (10.1ms) [L#8]
-  * test non org admins cannot create folders in org [L#28]  * test non org admins cannot create folders in org (12.0ms) [L#28]
-
-FlashwarsWeb.GamesDuelGameplayTest [test/flashwars_web/live/games_duel_gameplay_test.exs]
-  * test ready clicks start next round early when threshold met [L#154]  * test ready clicks start next round early when threshold met (289.1ms) [L#154]
-  * test game over and restart allows new game [L#221]  * test game over and restart allows new game (486.1ms) [L#221]
-  * test round closes on first answer, reveals, auto-advances [L#40]  * test round closes on first answer, reveals, auto-advances (536.0ms) [L#40]
-  * test time limit shows countdown and auto-closes round [L#109]  * test time limit shows countdown and auto-closes round (563.7ms) [L#109]
-
-FlashwarsWeb.FlashcardsLiveTest [test/flashwars_web/live/flashcards_live_test.exs]
-  * test loads and swipes increment count [L#16]  * test loads and swipes increment count (761.6ms) [L#16]
-  * test shows recap after 10 swipes and continues to next round [L#44]  * test shows recap after 10 swipes and continues to next round (889.0ms) [L#44]
-
-FlashwarsWeb.LearnFlowE2ETest [test/flashwars_web/live/learn_live_test.exs]
-  * test answer then continue advances to next question [L#145]  * test answer then continue advances to next question (26608.5ms) [L#145]
-
-  2) test answer then continue advances to next question (FlashwarsWeb.LearnFlowE2ETest)
-     test/flashwars_web/live/learn_live_test.exs:145
-     ** (MatchError) no match of right hand side value: :timeout
-     code: :ok =
-     stacktrace:
-       test/flashwars_web/live/learn_live_test.exs:175: (test)
-
-
-FlashwarsWeb.LayoutsNavTest [test/flashwars_web/live/layouts_nav_test.exs]
-  * test navbar hides Organizations link and org switcher when exactly 1 org [L#15]  * test navbar hides Organizations link and org switcher when exactly 1 org (46.6ms) [L#15]
-  * test navbar shows org switcher when user has multiple orgs [L#26]  * test navbar shows org switcher when user has multiple orgs (31.5ms) [L#26]
-
-Flashwars.Content.TagTest [test/content/tag_test.exs]
-  * test authorization admins can create tags [L#41]  * test authorization admins can create tags (1.4ms) [L#41]
-  * test valid inputs can create a tag with a specific name [L#30]  * test valid inputs can create a tag with a specific name (4.3ms) [L#30]
-  * test authorization non-admins cannot create tags [L#37]  * test authorization non-admins cannot create tags (1.2ms) [L#37]
-  * test authorization admins can update tags [L#45]  * test authorization admins can update tags (4.5ms) [L#45]
-  * property valid inputs accepts all valid input [L#13]  * property valid inputs accepts all valid input (27.3ms) [L#13]
-  * property valid inputs succeeds on all valid input [L#20]  * property valid inputs succeeds on all valid input (382.1ms) [L#20]
-
-Flashwars.Learning.EngineTest [test/learning/engine_test.exs]
-  * test test mode smart flag bypasses scheduler [L#281]  * test test mode smart flag bypasses scheduler (146.0ms) [L#281]
-  * test learn round smart flag bypasses scheduler [L#209]  * test learn round smart flag bypasses scheduler (242.4ms) [L#209]
-  * test learning flow sessions adapt based on prior reviews [L#118]  * test learning flow sessions adapt based on prior reviews (148.4ms) [L#118]
-  * test test mode fixed size and prioritizes due items [L#252]  * test test mode fixed size and prioritizes due items (225.1ms) [L#252]
-  * test flashcards smart order uses scheduler [L#57]  * test flashcards smart order uses scheduler (163.6ms) [L#57]
-  * test flashcards smart flag bypasses scheduler [L#82]  * test flashcards smart flag bypasses scheduler (148.3ms) [L#82]
-  * test learn round mixed items obey rules [L#169]  * test learn round mixed items obey rules (170.1ms) [L#169]
-  * test generate_item/2 produces 4 choices with valid answer index and respects exclusions [L#17]  * test generate_item/2 produces 4 choices with valid answer index and respects exclusions (86.9ms) [L#17]
-  * test flashcards order strategies and exclusions [L#35]  * test flashcards order strategies and exclusions (150.5ms) [L#35]
-
-FlashwarsWeb.PageControllerTest [test/flashwars_web/controllers/page_controller_test.exs]
-  * test GET / redirects signed-in user with one org to that org home [L#27]  * test GET / redirects signed-in user with one org to that org home (15.5ms) [L#27]
-  * test GET / redirects signed-in user with multiple orgs to /orgs [L#42]  * test GET / redirects signed-in user with multiple orgs to /orgs (13.9ms) [L#42]
-  * test GET / shows new landing for logged out [L#13]  * test GET / shows new landing for logged out (1.6ms) [L#13]
-  * test GET / redirects signed-in user with no orgs to /orgs [L#19]  * test GET / redirects signed-in user with no orgs to /orgs (7.9ms) [L#19]
-
-Finished in 35.6 seconds (35.5s async, 0.05s sync)
-2 properties, 76 tests, 2 failures
